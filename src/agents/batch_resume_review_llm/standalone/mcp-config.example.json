@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "batch-resume-review-llm": {
+      "command": "<absolute-path-to-bundle>\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "batch_resume_review_llm.mcp_server"],
+      "cwd": "<absolute-path-to-bundle>",
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

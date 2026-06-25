@@ -9,6 +9,45 @@
 
 ## 当前任务
 
+### T-025 沉淀 OpenAI-compatible LLM 包装 Skill
+
+- 状态: Done
+- 目标: 总结 `batch-resume-review-llm` 接入 FastGPT 的经验，形成可复用 skill，并增强 `langchain-agent-builder` 使后续智能体可选择构建 OpenAI-compatible LLM 入口。
+- 验收标准:
+  - `.codex/skills/openai-compatible-llm-wrapper/` 包含可触发的 `SKILL.md` 和 `agents/openai.yaml`。
+  - Skill 覆盖接口契约、流式 SSE、Dify/FastGPT 接入、文件链接数组提示词结构和常见排障。
+  - `langchain-agent-builder` 增加 OpenAI-compatible wrapper 选型与最小实现要求。
+  - Skill 基础校验通过。
+- 执行计划:
+  - 整理本次 FastGPT 接入的成功路径和踩坑点。
+  - 完善 `openai-compatible-llm-wrapper` skill。
+  - 更新 `langchain-agent-builder` 的工作流和结构建议。
+  - 运行 skill 校验。
+- 验证:
+  - `quick_validate.py .codex/skills/openai-compatible-llm-wrapper` 通过，输出 `Skill is valid!`。
+- 最后更新: 2026-06-25
+
+### T-024 创建批量简历 OpenAI-compatible 流式适配智能体
+
+- 状态: Done
+- 目标: 复制 `batch-resume-review` 为 `batch_resume_review_llm`，保留原智能体不变，并新增面向 Dify/FastGPT 自定义 LLM 节点的 OpenAI-compatible 流式接口。
+- 验收标准:
+  - 新目录 `src/agents/batch_resume_review_llm/` 可独立导入和运行，不依赖修改原 `batch_resume_review`。
+  - 提供 `GET /v1/models` 和 `POST /v1/chat/completions`，模型 ID 为 `batch-resume-review-agent`。
+  - `stream=false` 返回 OpenAI-compatible Chat Completions JSON，`stream=true` 返回 SSE chunk 和 `[DONE]`。
+  - 同步 REST、MCP 能力在新智能体内保留，端口沿用 8006 和 8005。
+  - 更新智能体 README、登记表、运行手册和设计决策。
+- 执行计划:
+  - 复制原批量简历智能体源码、规则和参考资料。
+  - 在新包内调整服务命名、manifest 和 User-Agent。
+  - 新增 OpenAI-compatible FastAPI 入口、消息解析和 SSE 输出。
+  - 增加定向测试并运行原智能体回归。
+- 验证:
+  - `python -m pytest tests\agents\test_batch_resume_review_llm.py -q` 通过，3 个测试覆盖模型列表、非流式 dry-run 和流式 SSE dry-run。
+  - `python -m pytest tests\agents\test_batch_resume_review.py -q` 通过，26 个原批量简历智能体回归测试通过。
+  - `ruff check src\agents\batch_resume_review_llm tests\agents\test_batch_resume_review_llm.py` 通过。
+- 最后更新: 2026-06-25
+
 ### T-023 扩展批量简历多格式解析与百炼 OCR
 
 - 状态: Done

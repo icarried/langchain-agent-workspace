@@ -81,3 +81,9 @@
 - 决策: `batch-resume-review` 的 CLI、API 和 MCP 统一接受 PDF、DOC、DOCX、MD、TXT；文本优先本地解析，PDF 无文本页面和图片型 DOCX 才调用百炼 `qwen3.5-ocr`。旧 DOC 先禁用宏并转换为 DOCX。
 - 原因: 在 loader 边界处理格式和 OCR 可复用现有 LangGraph、单候选人失败隔离及远程 URL 内存流逻辑，同时避免文本型简历产生不必要的 OCR 成本。
 - 影响: OCR 复用 `DASHSCOPE_API_KEY`，页面图像会发送给百炼；dry-run 只跳过筛选模型，不跳过解析所必需的 OCR。独立包增加 PyMuPDF，并在 Windows 通过 pywin32 调用 Word，非 Windows 的 DOC 转换可使用 LibreOffice。
+
+## 2026-06-25 - 隔离复制批量简历 OpenAI-compatible 流式适配器
+
+- 决策: 新增 `batch-resume-review-llm`，从 `batch-resume-review` 复制源码、规则和参考资料，再添加 OpenAI-compatible `/v1/chat/completions` 流式入口。
+- 原因: Dify/FastGPT 的普通 HTTP 节点不适合长任务轮询；把智能体暴露成自定义 LLM 更容易让平台在对话界面流式显示结果。复制隔离可避免影响原本已能正常运行的批量简历智能体。
+- 影响: 新旧两个智能体沿用 API 端口 `8006` 和 MCP 端口 `8005`，但不得同时启动。新智能体优先接收消息中的 JD 文本和简历路径或 MinIO 预签名 URL。

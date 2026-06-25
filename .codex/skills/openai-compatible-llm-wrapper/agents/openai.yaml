@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenAI-compatible LLM Wrapper"
+  short_description: "Wrap agent APIs as OpenAI-compatible streaming LLM endpoints."
+  default_prompt: "Wrap this agent API as an OpenAI-compatible LLM endpoint with streaming support."

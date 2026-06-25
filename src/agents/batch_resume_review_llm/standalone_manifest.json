@@ -1,0 +1,29 @@
+{
+  "distribution_name": "batch-resume-review-llm-agent",
+  "package_name": "batch_resume_review_llm",
+  "version": "0.1.0",
+  "description": "OpenAI-compatible streaming adapter for batch resume screening, review, scoring, and ranking",
+  "python_requires": ">=3.11",
+  "console_script": "batch-resume-review-llm",
+  "dependencies": [
+    "fastapi>=0.115,<1",
+    "fastmcp>=2,<3",
+    "langchain-core>=0.3,<2",
+    "langchain-openai>=0.3,<2",
+    "langgraph>=0.4,<2",
+    "pydantic>=2.10,<3",
+    "pypdf>=5,<7",
+    "PyMuPDF>=1.25,<2",
+    "python-docx>=1.1,<2",
+    "pywin32>=306; platform_system == 'Windows'",
+    "python-dotenv>=1,<2",
+    "rich>=13,<15",
+    "typer>=0.15,<1",
+    "uvicorn>=0.34,<1"
+  ],
+  "package_data": [
+    "review_guide/*.md",
+    "references/universities/*.md",
+    "examples/*.md"
+  ]
+}

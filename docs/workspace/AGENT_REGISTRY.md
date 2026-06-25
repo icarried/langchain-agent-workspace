@@ -26,6 +26,20 @@
 - 关联任务: T-016、T-019、T-022、T-023
 - 备注: REST API 的 `resume_paths` 支持服务端路径和 MinIO HTTP(S) 预签名 URL，并对远程读取实施超时、大小上限和可选主机白名单。筛除名单不参与排名，待复核候选人保留排名并同时出现在复核项中。报告显示简历原文姓名和文件名。CLI/API/MCP 均接受 PDF/DOC/DOCX/MD/TXT；扫描件按需使用百炼 OCR。正式审查加载智能体包内 `references/universities/` 高校参照。
 
+### batch-resume-review-llm
+
+- 状态: Ready
+- 用途: 隔离复制 `batch-resume-review`，作为 Dify/FastGPT 自定义 OpenAI-compatible LLM 节点的流式模型适配器，输出批量简历审查进度和最终报告。
+- 源码路径: `src/agents/batch_resume_review_llm/`
+- 运行入口: `python -m src.agents.batch_resume_review_llm review <resume-a> <resume-b> --job-description <jd.txt> --output <report.md>`
+- OpenAI-compatible 入口: `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006`，模型 ID `batch-resume-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- MCP 入口: stdio `python -m src.agents.batch_resume_review_llm.mcp_server`；HTTP `python -m src.agents.batch_resume_review_llm.mcp_server --transport http --host 127.0.0.1 --port 8005 --path /mcp`；tool 名称 `review_resumes`。
+- API 入口: `uvicorn src.agents.batch_resume_review_llm.api:app --reload --port 8006`，主接口 `POST /review`。
+- 调试方式: 先用 `/v1/chat/completions` 的 `dry_run=true` 验证 Dify/FastGPT 模型接入和流式输出，再接入正式模型。
+- 需要的环境变量: 同 `batch-resume-review`。
+- 关联任务: T-024
+- 备注: 本智能体与原 `batch-resume-review` 沿用相同端口，二者不要同时启动；复制隔离用于避免影响原生产可用入口。
+
 ### resume-review
 
 - 状态: Ready

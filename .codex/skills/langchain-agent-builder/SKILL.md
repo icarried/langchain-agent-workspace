@@ -16,7 +16,8 @@ Use this skill to create a complete, maintainable LangChain / LangGraph agent in
 5. Use LangGraph for multi-step workflows. Prefer explicit nodes such as `load_inputs`, `prepare_context`, `review_chunks`, `aggregate_report`.
 6. Add a dry-run path when the workflow handles long files, paid APIs, or fragile external services.
 7. Add focused tests for deterministic units and one dry-run graph test.
-8. Update `docs/workspace/AGENT_REGISTRY.md`, `docs/development/RUN_AND_DEBUG.md`, and decisions/problem logs when relevant.
+8. Decide whether the agent needs an OpenAI-compatible LLM wrapper for Dify/FastGPT-style platform LLM nodes.
+9. Update `docs/workspace/AGENT_REGISTRY.md`, `docs/development/RUN_AND_DEBUG.md`, and decisions/problem logs when relevant.
 
 ## Agent Structure
 
@@ -35,6 +36,8 @@ src/agents/<agent_name>/
 ```
 
 Add domain-specific modules only when needed, for example `docx_loader.py`, `chunking.py`, or `tools.py`.
+
+For platform-facing agents that should be called as a custom LLM, add an optional `openai_compatible_api.py` beside the normal `api.py`. Use the `openai-compatible-llm-wrapper` skill for the detailed contract.
 
 ## Model Provider Pattern
 
@@ -68,6 +71,22 @@ Use separate prompts for each node. Good review prompts require:
 - A prohibition on inventing unseen content.
 
 Avoid asking one node to both inspect raw content and synthesize the final report when the source is long.
+
+## OpenAI-compatible LLM Wrapper Pattern
+
+Use this pattern when a Dify/FastGPT workflow should call the agent through an LLM/model node, stream output to the chat UI, or avoid HTTP-node timeout and polling complexity.
+
+Minimum wrapper behavior:
+
+- Keep the original CLI/API/MCP/service function unchanged.
+- Expose `GET /v1/models` and `POST /v1/chat/completions` from a separate FastAPI app.
+- Accept `messages`, `model`, `stream`, and ignore unknown OpenAI-compatible fields.
+- Return 200 readiness text for generic model-test prompts that do not include business inputs.
+- Parse labeled prompt sections such as `岗位要求：` and `简历文件：`.
+- Support file links rendered as newline URLs and FastGPT `array<string>` JSON arrays.
+- Stream SSE `chat.completion.chunk` events and end with `data: [DONE]`.
+
+Document the platform prompt template, Base URL, model id, port conflict rules, and container/Windows networking path. Validate from inside the same Docker/WSL namespace as the platform, not only from Windows.
 
 ## Validation
 

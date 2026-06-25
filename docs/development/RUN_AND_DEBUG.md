@@ -356,6 +356,43 @@ python scripts\package_agent_standalone.py --agent batch_resume_review --output-
 
 ZIP 内的 `README.md` 包含独立安装、CLI、API、stdio/HTTP MCP 使用说明；`mcp-config.example.json` 和 `mcp_client_example.py` 可直接改路径后使用。通用封装约定见 `docs/development/AGENT_STANDALONE_PACKAGING_GUIDE.md`。
 
+## 批量简历 OpenAI-compatible 流式适配智能体
+
+`batch-resume-review-llm` 是从 `batch-resume-review` 复制隔离出来的新智能体，供 Dify/FastGPT 自定义 OpenAI-compatible LLM 节点调用。它和原智能体沿用相同端口，不要同时启动。
+
+面向 FastGPT、Dify 等平台的人读版接入说明见 `docs/development/OPENAI_COMPATIBLE_LLM_PLATFORM_INTEGRATION.md`。
+
+启动 OpenAI-compatible 服务：
+
+```powershell
+uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006
+```
+
+模型配置：
+
+- Base URL: `http://<服务地址>:8006/v1`
+- Model: `batch-resume-review-agent`
+- Stream: 开启
+- API Key: 当前服务不校验，可填平台要求的占位值
+
+LLM 节点提示词推荐格式：
+
+```text
+岗位要求：要求本科及以上学历，熟悉 Python。
+
+简历文件：
+http://minio.example/bucket/candidate-a.pdf?X-Amz-Signature=...
+http://minio.example/bucket/candidate-b.docx?X-Amz-Signature=...
+
+输出要求：请输出批量简历审查与排序报告。
+```
+
+本地 dry-run 验证：
+
+```powershell
+python -m pytest tests\agents\test_batch_resume_review_llm.py -q
+```
+
 ## 高校参照数据维护
 
 工作区共享资料位于 `src/reference_data/universities/`；可独立交付的批量智能体同时在自身 `references/universities/` 保存版本化副本：
