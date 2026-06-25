@@ -1,0 +1,29 @@
+name: langchain
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - ipykernel
+  - pip:
+      - langchain
+      - langchain-community
+      - langchain-core
+      - langchain-openai
+      - langgraph
+      - langsmith
+      - python-dotenv
+      - pydantic
+      - python-docx
+      - pypdf
+      - PyMuPDF
+      - pywin32
+      - mcp
+      - fastmcp
+      - fastapi
+      - uvicorn
+      - typer
+      - rich
+      - pytest
+      - pytest-asyncio
+      - ruff

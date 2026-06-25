@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import argparse
+import base64
+import binascii
+import tempfile
+from pathlib import Path
+from typing import Any
+
+from fastmcp import FastMCP
+
+from .service import resolve_workspace_path, review_resume
+
+
+MCP_RESUME_EXTENSIONS = {".docx", ".pdf", ".txt"}
+
+
+mcp = FastMCP(
+    name="resume-review",
+    instructions=(
+        "Use the review_resume tool to review resume files for HR screening quality, "
+        "pre-background-check risks, and job matching. Send resume content as base64. "
+        "Use dry_run=true for quick connectivity and parsing checks before invoking a full review."
+    ),
+)
+
+
+@mcp.tool(
+    name="review_resume",
+    description=(
+        "Review a DOCX/PDF/TXT resume against the supplied job-description text. "
+        "Accepts resume file content as base64 and returns a Markdown report."
+    ),
+)
+def review_resume_tool(
+    resume_base64: str,
+    resume_filename: str = "uploaded.txt",
+    job_description_text: str = "",
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    content = _decode_base64(resume_base64)
+    filename = _safe_resume_filename(resume_filename)
+    target_dir = resolve_workspace_path("临时文件/mcp_uploads")
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="resume-review-", dir=target_dir) as temp_dir:
+        resume_path = Path(temp_dir) / filename
+        resume_path.write_bytes(content)
+        result = review_resume(
+            resume_path,
+            job_description_text=job_description_text,
+            dry_run=dry_run,
+        )
+
+    return {
+        "report": result["report"],
+        "dry_run": result["dry_run"],
+        "chunk_count": result["chunk_count"],
+        "filename": filename,
+    }
+
+
+def _decode_base64(resume_base64: str) -> bytes:
+    try:
+        return base64.b64decode(resume_base64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("resume_base64 must be valid base64 content.") from exc
+
+
+def _safe_resume_filename(resume_filename: str) -> str:
+    filename = Path(resume_filename).name or "uploaded.txt"
+    suffix = Path(filename).suffix.lower()
+    if suffix not in MCP_RESUME_EXTENSIONS:
+        supported = ", ".join(sorted(MCP_RESUME_EXTENSIONS))
+        raise ValueError(f"unsupported MCP resume file type '{suffix}', supported: {supported}")
+    return filename
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Resume review MCP server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http", "streamable-http", "sse"],
+        default="stdio",
+        help="MCP transport. Use stdio for client-managed on-demand startup; use http for a long-running service.",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP host")
+    parser.add_argument("--port", type=int, default=8003, help="HTTP port")
+    parser.add_argument("--path", default="/mcp", help="HTTP MCP endpoint path")
+    args = parser.parse_args()
+
+    if args.transport == "stdio":
+        mcp.run(transport="stdio", show_banner=False)
+    else:
+        mcp.run(
+            transport=args.transport,
+            host=args.host,
+            port=args.port,
+            path=args.path,
+            show_banner=False,
+        )

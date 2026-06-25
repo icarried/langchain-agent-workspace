@@ -1,0 +1,4 @@
+interface:
+  display_name: "LangChain Agent Builder"
+  short_description: "Build LangChain agents in this workspace"
+  default_prompt: "Use $langchain-agent-builder to create a new LangChain / LangGraph agent in this workspace."

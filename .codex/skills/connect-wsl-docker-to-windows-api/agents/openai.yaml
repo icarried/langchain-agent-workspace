@@ -1,0 +1,4 @@
+interface:
+  display_name: "Connect WSL/Docker to Windows API"
+  short_description: "Relay container traffic to Windows APIs through WSL"
+  default_prompt: "Use $connect-wsl-docker-to-windows-api to diagnose and connect a Docker or FastGPT container to an API running on Windows."
