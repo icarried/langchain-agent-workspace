@@ -61,10 +61,11 @@
 - 运行入口: `python -m src.agents.tender_format_review review <docx> --review-guide <md> --catalog <txt> --output <report.md>`
 - MCP 入口: stdio `python -m src.agents.tender_format_review.mcp_server`；HTTP `python -m src.agents.tender_format_review.mcp_server --transport http --host 127.0.0.1 --port 8002 --path /mcp`；tool 名称 `review_tender_format`。
 - API 入口: `uvicorn src.agents.tender_format_review.api:app --reload --port 8001`，主接口 `POST /review`。
+- OpenAI-compatible 入口: `uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0 --port 8007`，模型 ID `tender-format-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
 - 调试方式: 先运行 `--dry-run` 验证 docx 解析、分块和输出路径，再接入 DeepSeek 或 DashScope/Qwen 模型。
-- 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `TENDER_REVIEW_MODEL`、`TENDER_REVIEW_BASE_URL`。
-- 关联任务: T-009、T-011、T-012
-- 备注: 对 10 万字以上文件默认采用“解析元素 -> 章节/长度分块 -> 分块审查 -> 汇总复核”，不依赖整篇一次放入上下文。Codex 后台起常驻 HTTP MCP 时，优先直接调用 `C:\Users\Lenovo\.conda\envs\langchain\python.exe`，不要依赖 `conda run`；详见 `docs/development/RUN_AND_DEBUG.md` 和 `docs/operations/PROBLEM_LOG.md` 的 2026-06-17 记录。
+- 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `TENDER_REVIEW_MODEL`、`TENDER_REVIEW_BASE_URL`、`TENDER_REVIEW_MAX_REMOTE_FILE_BYTES`、`TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS`。
+- 关联任务: T-009、T-011、T-012、T-026
+- 备注: 对 10 万字以上文件默认采用“解析元素 -> 章节/长度分块 -> 分块审查 -> 汇总复核”，不依赖整篇一次放入上下文。OpenAI-compatible 入口用于 Dify/FastGPT LLM 节点流式输出，可从 prompt 的“招标文件”区块读取服务端路径或 HTTP(S) `.docx` 链接。Codex 后台起常驻 HTTP MCP 时，优先直接调用 `C:\Users\Lenovo\.conda\envs\langchain\python.exe`，不要依赖 `conda run`；详见 `docs/development/RUN_AND_DEBUG.md` 和 `docs/operations/PROBLEM_LOG.md` 的 2026-06-17 记录。
 
 ## 模板
 

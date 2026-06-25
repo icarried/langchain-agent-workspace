@@ -19,6 +19,18 @@
 
 ## 记录
 
+### 2026-06-25 - Tender LLM wrapper 读取 FastGPT MinIO 预签名 URL 需临时端口映射
+
+- 状态: Fixed
+- 影响: `tender-format-review` 的 OpenAI-compatible LLM 入口从 FastGPT prompt 中读取 `.docx` 预签名 URL 时，可能无法通过 URL 上的 `10.71.2.94:9000` 直接取到文件。
+- 现象: FastGPT 提供的 MinIO URL Host 为 `10.71.2.94:9000`，但 Windows 本机实际访问该 FastGPT MinIO 实例需要走 `127.0.0.1:9002`。
+- 复现步骤: 在 FastGPT LLM 节点提示词中传入 `http://10.71.2.94:9000/...docx?...X-Amz-Signature=...` 后调用 `tender-format-review-agent`。
+- 初步判断: 这是当前本机 Docker/FastGPT/MinIO 发布端口与签名 Host 不一致导致的环境兼容问题。
+- 已尝试: 在 `src/agents/tender_format_review/openai_compatible_api.py::_temporary_minio_transport_mapping` 中增加临时传输映射：实际 TCP 连接走 `127.0.0.1:9002`，HTTP `Host` 仍保持 `10.71.2.94:9000`，查询签名不改写。
+- 结论: 映射逻辑已有单元测试覆盖，避免直接替换 URL 导致 AWS V4 签名失效。
+- 长期建议: 修正 FastGPT 的 MinIO 外部访问/签名地址，使预签名 URL 直接使用实际可达地址或统一反向代理域名；验证通过后删除该硬编码临时映射和对应测试。
+- 关联任务: T-026
+
 ### 2026-06-24 - Windows API 读取 FastGPT MinIO 预签名 URL 返回 404
 
 - 状态: Investigating

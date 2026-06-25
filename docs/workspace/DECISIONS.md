@@ -87,3 +87,9 @@
 - 决策: 新增 `batch-resume-review-llm`，从 `batch-resume-review` 复制源码、规则和参考资料，再添加 OpenAI-compatible `/v1/chat/completions` 流式入口。
 - 原因: Dify/FastGPT 的普通 HTTP 节点不适合长任务轮询；把智能体暴露成自定义 LLM 更容易让平台在对话界面流式显示结果。复制隔离可避免影响原本已能正常运行的批量简历智能体。
 - 影响: 新旧两个智能体沿用 API 端口 `8006` 和 MCP 端口 `8005`，但不得同时启动。新智能体优先接收消息中的 JD 文本和简历路径或 MinIO 预签名 URL。
+
+## 2026-06-25 - 招标文件审查增加 OpenAI-compatible LLM 薄包装
+
+- 决策: 在 `tender-format-review` 内新增 `openai_compatible_api.py`，复用原 `review_tender_format` 服务层，不复制智能体目录。
+- 原因: 招标文件审查的原 CLI/API/MCP 已稳定，当前只需要让 Dify/FastGPT 的 LLM 节点可以流式接入；薄包装能避免业务逻辑分叉。
+- 影响: 新入口提供 `GET /v1/models` 和 `POST /v1/chat/completions`，模型 ID 为 `tender-format-review-agent`。prompt 通过“招标文件”区块传入服务端 `.docx` 路径或 HTTP(S) `.docx` 链接；远程文件临时下载后交给原服务层，报告仍由原 LangGraph 工作流生成。为兼容当前 FastGPT/MinIO 部署，临时将 `10.71.2.94:9000` 的实际传输地址映射为 `127.0.0.1:9002`，同时保留原始 `Host` 头；修正 FastGPT 签名地址后应删除该映射。

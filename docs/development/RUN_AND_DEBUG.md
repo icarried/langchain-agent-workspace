@@ -122,6 +122,34 @@ Invoke-RestMethod `
 
 更多智能体 API 封装经验见 `docs/development/AGENT_API_WRAPPING_GUIDE.md`。
 
+### OpenAI-compatible LLM 入口
+
+用于 Dify/FastGPT 自定义模型节点流式调用，不替代原 `/review` API：
+
+```powershell
+uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0 --port 8007
+```
+
+模型配置：
+
+- Base URL: `http://<服务地址>:8007/v1`
+- Model: `tender-format-review-agent`
+- Stream: 开启
+- API Key: 当前服务不校验，可填平台要求的占位值
+
+LLM 节点提示词推荐格式：
+
+```text
+招标文件：
+http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
+
+输出要求：请输出招标文件格式审查报告。
+```
+
+`招标文件` 也可以是服务端本地 `.docx` 路径。FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的第一个文件链接。远程 `.docx` 会临时下载后交给原 `review_tender_format` 服务层；可用 `TENDER_REVIEW_MAX_REMOTE_FILE_BYTES` 和 `TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS` 调整大小上限和超时。
+
+当前存在一处临时 MinIO 传输映射：FastGPT 生成的预签名 URL 为 `10.71.2.94:9000`，但 Windows 侧实际访问该实例需要走 `127.0.0.1:9002`。`src.agents.tender_format_review.openai_compatible_api` 会在读取远程 `.docx` 时把实际连接地址映射为 `127.0.0.1:9002`，同时保留原始 `Host: 10.71.2.94:9000` 和完整查询签名。该逻辑只用于这个具体地址，是临时兼容层；修好 FastGPT/MinIO 外部签名地址后应删除。
+
 ## 简历审查智能体
 
 先执行 dry-run，确认简历可解析且分块合理：

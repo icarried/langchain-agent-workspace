@@ -63,6 +63,57 @@ from src.agents.tender_format_review import review_tender_format
 result = review_tender_format("./临时文件/仅包含一行文字的文件.docx", dry_run=True)
 ```
 
+## OpenAI-compatible LLM 调用
+
+当 Dify/FastGPT 等平台的普通 HTTP 节点不适合长任务或流式输出时，可以把该智能体作为自定义 OpenAI-compatible LLM 使用。原 `/review` API、CLI 和 MCP 入口保持不变。
+
+启动服务：
+
+```powershell
+uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0 --port 8007
+```
+
+平台模型配置：
+
+| 项 | 值 |
+| --- | --- |
+| Base URL | `http://<服务地址>:8007/v1` |
+| Model | `tender-format-review-agent` |
+| Stream | 开启 |
+| API Key | 当前服务不校验，可填平台要求的占位值 |
+
+LLM 节点提示词推荐格式：
+
+```text
+招标文件：
+http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
+
+输出要求：请输出招标文件格式审查报告。
+```
+
+也可以把 `招标文件` 写成服务端本地路径，例如 `./临时文件/仅包含一行文字的文件.docx`。FastGPT 文件变量如果渲染为 JSON 数组，服务会读取数组中的第一个 `.docx`；查询字符串会原样保留以避免破坏预签名 URL。
+
+### 临时 MinIO 映射
+
+当前本机 FastGPT/MinIO 部署存在临时网络映射问题：FastGPT 传给智能体的预签名 URL 使用 `10.71.2.94:9000`，但该 MinIO 实例在 Windows 上实际通过 `127.0.0.1:9002` 访问。因此 `openai_compatible_api.py::_temporary_minio_transport_mapping` 内置了临时映射：
+
+```text
+签名 URL / Host: 10.71.2.94:9000
+实际连接地址: 127.0.0.1:9002
+```
+
+这个兼容层只改变 TCP 传输目标，不改原始 URL 的查询签名，并保留 HTTP `Host: 10.71.2.94:9000`。不要直接把 URL 文本中的 `:9000` 替换成 `:9002`，因为 MinIO/S3 的 AWS V4 签名通常包含 Host，直接改 URL 会导致签名校验失败。
+
+这是临时解决办法。长期应修正 FastGPT 的 MinIO 外部访问/签名地址，让新生成的预签名 URL 直接指向实际可达地址或统一反向代理域名；验证通过后应删除该映射函数中的硬编码关系和对应测试。
+
+连通性测试可以发送普通 `hello`，服务会返回 readiness 文本而不是 400。正式审查建议先传 `dry_run=true` 验证解析和流式输出，再去掉 dry-run 调用模型。
+
+本地 dry-run 验证：
+
+```powershell
+python -m pytest tests\agents\test_tender_format_review_llm.py -q
+```
+
 ## MCP 调用
 
 MCP 是该智能体面向 Agent 编排的优先入口。客户端把待审 `.docx` 文件内容发送给 MCP 服务端，服务端临时落盘、执行审查，然后把 Markdown 报告作为 tool 返回值返回。调用方负责把返回的报告保存到自己的文件系统。

@@ -9,6 +9,26 @@
 
 ## 当前任务
 
+### T-026 将招标文件审查智能体封装为 OpenAI-compatible LLM
+
+- 状态: Done
+- 目标: 参考 `openai-compatible-llm-wrapper` skill，把已有 `tender-format-review` 暴露为 Dify/FastGPT 可调用的 OpenAI-compatible LLM 服务。
+- 验收标准:
+  - 保留原 CLI/API/MCP 入口不变，新增 `GET /v1/models` 和 `POST /v1/chat/completions`。
+  - 模型 ID 稳定为 `tender-format-review-agent`，支持 `stream=false` 和 `stream=true`。
+  - 普通模型探测提示返回 200 readiness 文本，不因缺少业务输入返回 400。
+  - LLM prompt 可通过“招标文件”区块传入服务端 `.docx` 路径或 HTTP(S) `.docx` 链接。
+  - 增加定向测试并同步 README、运行手册、登记表和设计决策。
+- 执行计划:
+  - 复用原 `review_tender_format` 服务层，新增薄的 OpenAI-compatible FastAPI app。
+  - 补充 prompt 解析、SSE 输出和远程 `.docx` 临时下载。
+  - 添加 LLM wrapper 测试并运行定向 pytest、ruff。
+  - 更新相关文档和任务状态。
+- 验证:
+  - `python -m pytest tests\agents\test_tender_format_review_llm.py -q` 通过，7 个测试覆盖模型列表、非流式 dry-run、模型探测 readiness、流式 readiness、FastGPT JSON 数组解析、临时 MinIO 传输映射和流式 dry-run。
+  - `ruff check src\agents\tender_format_review\openai_compatible_api.py tests\agents\test_tender_format_review_llm.py` 通过。
+- 最后更新: 2026-06-25
+
 ### T-025 沉淀 OpenAI-compatible LLM 包装 Skill
 
 - 状态: Done
