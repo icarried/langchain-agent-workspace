@@ -12,6 +12,20 @@
 
 ## 智能体列表
 
+### langchain-knowledge-base
+
+- 状态: Ready
+- 用途: Code-first 本地知识库 RAG 智能体，支持本地 PDF、DOCX、Markdown、TXT 文档入库、检索问答、来源引用、无依据拒答、基础 eval，以及 Langflow 演示 UI。
+- 源码路径: `src/agents/langchain_knowledge_base/`
+- 子项目定位: 保持可分离的独立智能体项目；运行、测试、打包和 Docker Compose 均以 `src/agents/langchain_knowledge_base/` 为工作目录，不从工作区根目录导入运行。
+- API 入口: 在智能体目录下运行 `uvicorn kb_api.main:app --host 0.0.0.0 --port 8008`，接口包含 `GET /health`、`POST /ingest`、`POST /v1/retrieval`、`GET /v1/models`、`POST /v1/chat/completions`，模型 ID `langchain-knowledge-base-agent`。
+- Docker 入口: 在智能体目录下运行 `docker compose up --build`；默认启动 `kb-api` 和 `langflow`，不启动独立 Chroma 服务。
+- 调试方式: 先复制 `src/agents/langchain_knowledge_base/.env.example` 为同目录 `.env`，把文档放入 `data/docs/`、`data/docs/primary/` 或 `data/docs/secondary/`，启动 API 后手动调用 `/ingest`，再调用 `/v1/retrieval` 或 `/v1/chat/completions`。
+- 向量存储: 使用 Chroma `PersistentClient` 本地持久化；非 Docker 默认目录为 `data/chroma/`，Compose 内为 `/app/data/chroma`，通过命名卷 `kb_chroma_data` 保存。`docker compose down` 不删除向量库，只有 `docker compose down -v` 会重置 Compose 持久化数据。
+- 需要的环境变量: `KB_OPENAI_API_KEY`；可选 `KB_OPENAI_BASE_URL`、`KB_CHAT_MODEL`、`KB_EMBEDDING_API_KEY`、`KB_EMBEDDING_BASE_URL`、`KB_EMBEDDING_MODEL`、`KB_DOCS_DIR`、`KB_CHROMA_PERSIST_DIR`、`KB_CHROMA_COLLECTION`、`KB_TOP_K`、`KB_MIN_RELEVANCE_SCORE`，以及 primary/secondary 知识库名称、目录、collection 和 keywords 配置。
+- 关联任务: T-027
+- 备注: 当前首版不包含鉴权、权限过滤、自动监听入库、生产级文档版本管理或 live Docker 真实模型 E2E。Langflow 只作为 demo/debug HTTP UI，不承载核心 RAG 逻辑。
+
 ### batch-resume-review
 
 - 状态: Ready
@@ -81,3 +95,4 @@
 - 关联任务:
 - 备注:
 ```
+

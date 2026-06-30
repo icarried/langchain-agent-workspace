@@ -9,6 +9,32 @@
 
 ## 当前任务
 
+### T-027 收编知识库智能体为独立子项目
+
+- 状态: Done
+- 目标: 确认并补全外部导入的 `langchain_knowledge_base`，保持其作为可分离的独立智能体子项目，从自身目录运行，并明确使用本地 Chroma `PersistentClient` 持久化。
+- 验收标准:
+  - `src/agents/langchain_knowledge_base/` 保留独立 `pyproject.toml`、Dockerfile、README 和 `.env.example`。
+  - 运行、测试、入库、问答和 Docker Compose 命令均以智能体目录为工作目录。
+  - 默认不依赖外部 Chroma 服务，向量数据持久化到 `data/chroma/` 或 Compose 命名卷 `kb_chroma_data`。
+  - 支持聊天模型和 embedding 模型分开配置，可用 DeepSeek 负责问答、百炼/DashScope `text-embedding-v4` 负责入库向量化。
+  - 提供 `POST /v1/retrieval` 纯检索接口，并在同一个 API app 中提供 `GET /v1/models` 和 `POST /v1/chat/completions`。
+  - 工作区登记表、运行手册、密钥说明和设计决策记录该智能体的独立子项目定位。
+  - 单元测试、eval fixture 和 Ruff 通过；Docker 运行验证按本机 Docker 可用性单独执行。
+- 执行计划:
+  - 修正健康检查、环境模板和 Compose，使 Chroma 存储口径与 `PersistentClient` 一致。
+  - 增加 retrieval-only API 和 OpenAI-compatible chat completions 入口。
+  - 补全子项目 README 的数据目录、启停和重置说明。
+  - 补充工作区级登记、运行文档、密钥说明和设计决策。
+  - 运行独立子项目测试、eval 和 Ruff。
+- 验证:
+  - `python -m pytest -q` 通过，42 个测试通过。
+  - `python -m evals.run` 通过，fixture 模式 3/3 通过。
+  - `ruff check .` 通过。
+  - `python -m compileall kb_api evals` 通过。
+  - 当前环境未安装 `docker` 命令，未执行 Docker Compose runtime 验证；README 已记录 Compose 启停和数据卷行为。
+- 最后更新: 2026-06-30
+
 ### T-026 将招标文件审查智能体封装为 OpenAI-compatible LLM
 
 - 状态: Done

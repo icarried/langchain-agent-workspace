@@ -93,3 +93,9 @@
 - 决策: 在 `tender-format-review` 内新增 `openai_compatible_api.py`，复用原 `review_tender_format` 服务层，不复制智能体目录。
 - 原因: 招标文件审查的原 CLI/API/MCP 已稳定，当前只需要让 Dify/FastGPT 的 LLM 节点可以流式接入；薄包装能避免业务逻辑分叉。
 - 影响: 新入口提供 `GET /v1/models` 和 `POST /v1/chat/completions`，模型 ID 为 `tender-format-review-agent`。prompt 通过“招标文件”区块传入服务端 `.docx` 路径或 HTTP(S) `.docx` 链接；远程文件临时下载后交给原服务层，报告仍由原 LangGraph 工作流生成。流式模式默认把非最终进度写入 `delta.reasoning_content`，最终报告写入 `delta.content`，可用 `thinking=false` 回退。为兼容当前 FastGPT/MinIO 部署，临时将 `10.71.2.94:9000` 的实际传输地址映射为 `127.0.0.1:9002`，同时保留原始 `Host` 头；修正 FastGPT 签名地址后应删除该映射。
+
+## 2026-06-30 - 知识库智能体保留独立子项目形态
+
+- 决策: 外部导入的 `langchain_knowledge_base` 保留独立 `pyproject.toml`、`.env.example`、Dockerfile、Compose 和 README；运行、测试、入库、问答、Docker Compose 均以 `src/agents/langchain_knowledge_base/` 为工作目录。
+- 原因: 用户希望该智能体完成后可从多智能体工作区分离出去独立交付；如果强行改成工作区根包导入，会增加分离成本和路径耦合。
+- 影响: 工作区只登记其位置、状态、运行方法和密钥变量，不把它纳入根目录统一启动方式。该智能体使用 Chroma `PersistentClient` 本地持久化，非 Docker 默认写入 `data/chroma/`，Compose 写入命名卷 `kb_chroma_data` 挂载的 `/app/data/chroma`；默认不启动独立 Chroma 服务。

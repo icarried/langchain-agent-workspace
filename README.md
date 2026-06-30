@@ -22,6 +22,7 @@
 - 已建立多智能体登记表，用于记录每个智能体的用途、路径、入口和状态。
 - 已创建 `tender-format-review` 招标文件格式审查智能体，并沉淀 `.codex/skills/langchain-agent-builder/` 作为后续 LangChain 智能体创建 skill。
 - 已创建 `resume-review` 单份简历审查智能体和 `batch-resume-review` 批量简历筛选、评分与排序智能体。
+- 已收编外部导入的 `langchain_knowledge_base` 知识库智能体；该智能体保留独立子项目形态，从自身目录运行，默认使用 Chroma `PersistentClient` 本地持久化。
 
 ## 推荐目录
 

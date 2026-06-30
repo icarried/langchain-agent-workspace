@@ -67,6 +67,139 @@ src/agents/graph.py      # LangGraph 图定义
 src/config/settings.py   # 环境变量和模型配置
 ```
 
+## 知识库智能体
+
+`langchain_knowledge_base` 是外部导入并保留可分离交付的独立子项目。所有命令都应先进入智能体目录运行，不从工作区根目录启动：
+
+```powershell
+cd E:\My_sorcode\--创建智能体工作空间--\src\agents\langchain_knowledge_base
+```
+
+复制环境模板并在同目录 `.env` 填写本地真实配置：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+关键变量：
+
+- `KB_OPENAI_API_KEY`
+- `KB_OPENAI_BASE_URL`
+- `KB_CHAT_MODEL`
+- `KB_EMBEDDING_API_KEY`
+- `KB_EMBEDDING_BASE_URL`
+- `KB_EMBEDDING_MODEL`
+- `KB_CHROMA_PERSIST_DIR`
+
+本智能体使用 Chroma `PersistentClient` 本地持久化，不依赖独立 Chroma 服务。非 Docker 运行默认把向量库写到 `data/chroma/`；停止 API 不会清空该目录。
+
+聊天模型和 embedding 模型可以分开配置。当前推荐测试方式是 DeepSeek 负责问答，百炼/DashScope 负责 embedding：
+
+```text
+KB_OPENAI_BASE_URL=https://api.deepseek.com
+KB_CHAT_MODEL=deepseek-v4-flash
+KB_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+KB_EMBEDDING_MODEL=text-embedding-v4
+```
+
+本地启动 API：
+
+```powershell
+uvicorn kb_api.main:app --host 0.0.0.0 --port 8008
+```
+
+健康检查：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8008/health
+```
+
+把文档放到 `data/docs/` 后手动入库：
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8008/ingest
+```
+
+指定多知识库目录：
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8008/ingest `
+  -ContentType "application/json" `
+  -Body '{"knowledge_base":"secondary"}'
+```
+
+问答：
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8008/v1/chat/completions `
+  -ContentType "application/json" `
+  -Body '{"model":"langchain-knowledge-base-agent","messages":[{"role":"user","content":"What is the vector store?"}],"stream":false}' |
+  ConvertTo-Json -Depth 8
+```
+
+纯检索接口，不调用聊天模型生成答案，只返回证据片段和引用：
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8008/v1/retrieval `
+  -ContentType "application/json" `
+  -Body '{"question":"群众性活动要管什么","top_k":4}' |
+  ConvertTo-Json -Depth 8
+```
+
+指定知识库问答：
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8008/v1/chat/completions `
+  -ContentType "application/json" `
+  -Body '{"model":"langchain-knowledge-base-agent","messages":[{"role":"user","content":"What is the support policy?"}],"knowledge_base":"secondary","stream":false}' |
+  ConvertTo-Json -Depth 8
+```
+
+同一个 API 服务也作为 OpenAI-compatible 模型入口用于 Dify/FastGPT 自定义模型节点。平台配置：
+
+- Base URL: `http://<服务地址>:8008/v1`
+- Model: `langchain-knowledge-base-agent`
+- Stream: 支持
+- API Key: 当前服务不校验，可填平台要求的占位值
+
+如果 FastGPT/Dify 在 WSL Docker 中运行，而知识库 API 运行在 Windows，可在 WSL 中使用中继：
+
+```bash
+setsid -f socat -d -d \
+  TCP-LISTEN:18008,bind=172.24.0.1,reuseaddr,fork \
+  TCP:127.0.0.1:8008 \
+  </dev/null >/tmp/windows-kb-api-relay-18008.log 2>&1
+```
+
+平台 Base URL 填 `http://172.24.0.1:18008/v1`。
+
+测试和评测：
+
+```powershell
+python -m compileall kb_api evals
+python -m pytest -q
+python -m evals.run
+ruff check .
+```
+
+Docker Compose 运行：
+
+```powershell
+docker compose up --build
+```
+
+Compose 默认启动 `kb-api` 和 `langflow`，不启动单独的 Chroma 容器。API 容器内的 `/app/data/chroma` 挂载到命名卷 `kb_chroma_data`。停止但保留向量库：
+
+```powershell
+docker compose down
+```
+
+只有确认要重建向量库时才删除 Compose 卷：
+
+```powershell
+docker compose down -v
+```
+
 ## 招标文件格式审查智能体
 
 先执行 dry-run，确认 docx 可解析且分块合理：
@@ -439,3 +572,4 @@ python -m pytest tests\reference_data\test_university_references.py -q
 python -m pytest tests\agents -q
 ruff check src\reference_data src\agents\resume_review src\agents\batch_resume_review tests
 ```
+
