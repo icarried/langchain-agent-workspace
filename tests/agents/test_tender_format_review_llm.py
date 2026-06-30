@@ -82,7 +82,25 @@ def test_chat_completions_stream_model_probe_without_review_input() -> None:
         text = "".join(response.iter_text())
 
     assert "tender-format-review-agent 已就绪" in text
+    assert "reasoning_content" in text
     assert "data: [DONE]" in text
+
+
+def test_chat_completions_stream_can_disable_thinking() -> None:
+    payload = _chat_payload(stream=True)
+    payload["thinking"] = False
+
+    with TestClient(app).stream(
+        "POST",
+        "/v1/chat/completions",
+        json=payload,
+    ) as response:
+        assert response.status_code == 200
+        text = "".join(response.iter_text())
+
+    assert "已接收 1 份招标文件" in text
+    assert "reasoning_content" not in text
+    assert '"content"' in text
 
 
 def test_extract_docx_inputs_accepts_fastgpt_json_array() -> None:
@@ -123,6 +141,7 @@ def test_chat_completions_stream_dry_run() -> None:
 
     assert "data: [DONE]" in text
     assert "已接收 1 份招标文件" in text
+    assert "reasoning_content" in text
     assert "dry-run 报告" in text
     chunks = [
         line.removeprefix("data: ")
@@ -131,4 +150,8 @@ def test_chat_completions_stream_dry_run() -> None:
     ]
     assert any(
         json.loads(chunk)["object"] == "chat.completion.chunk" for chunk in chunks
+    )
+    assert any(
+        "dry-run 报告" in json.loads(chunk)["choices"][0]["delta"].get("content", "")
+        for chunk in chunks
     )

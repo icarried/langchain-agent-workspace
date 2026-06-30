@@ -82,6 +82,8 @@ uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0
 | Stream | 开启 |
 | API Key | 当前服务不校验，可填平台要求的占位值 |
 
+默认 `thinking=true`：文件接收、解析审查中、心跳等非最终输出会写入流式 chunk 的 `delta.reasoning_content`，最终审查报告写入 `delta.content`。如果平台不显示 think/reasoning 内容，可在请求中传 `"thinking": false`，让进度也走普通 `content`。
+
 LLM 节点提示词推荐格式：
 
 ```text

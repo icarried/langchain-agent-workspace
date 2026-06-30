@@ -41,6 +41,7 @@ class ChatCompletionRequest(BaseModel):
     provider: str = "deepseek"
     review_model: str | None = None
     dry_run: bool = False
+    thinking: bool = True
 
 
 class ParsedTenderReviewRequest(BaseModel):
@@ -86,7 +87,7 @@ def create_chat_completion(request: ChatCompletionRequest) -> Any:
         content = _readiness_message()
         if request.stream:
             return StreamingResponse(
-                stream_text_response(content, request.model),
+                stream_text_response(content, request.model, thinking=request.thinking),
                 media_type="text/event-stream",
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
@@ -94,7 +95,7 @@ def create_chat_completion(request: ChatCompletionRequest) -> Any:
 
     if request.stream:
         return StreamingResponse(
-            stream_chat_completion(parsed, request.model),
+            stream_chat_completion(parsed, request.model, thinking=request.thinking),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -119,11 +120,23 @@ def parse_review_request(
     )
 
 
-def stream_text_response(content: str, model: str) -> Generator[str, None, None]:
+def stream_text_response(
+    content: str,
+    model: str,
+    *,
+    thinking: bool = True,
+) -> Generator[str, None, None]:
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     created = int(time.time())
     yield _sse_delta(completion_id, created, model, "assistant", "")
-    yield _sse_delta(completion_id, created, model, None, content)
+    yield _sse_delta(
+        completion_id,
+        created,
+        model,
+        None,
+        content,
+        channel="reasoning_content" if thinking else "content",
+    )
     yield _sse_done(completion_id, created, model)
     yield "data: [DONE]\n\n"
 
@@ -131,6 +144,8 @@ def stream_text_response(content: str, model: str) -> Generator[str, None, None]
 def stream_chat_completion(
     review_request: ParsedTenderReviewRequest,
     model: str,
+    *,
+    thinking: bool = True,
 ) -> Generator[str, None, None]:
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     created = int(time.time())
@@ -149,14 +164,29 @@ def stream_chat_completion(
         model,
         None,
         "已接收 1 份招标文件，开始解析与审查。\n\n",
+        channel="reasoning_content" if thinking else "content",
     )
-    yield _sse_delta(completion_id, created, model, None, "正在执行分块审查，请稍候。\n\n")
+    yield _sse_delta(
+        completion_id,
+        created,
+        model,
+        None,
+        "正在执行分块审查，请稍候。\n\n",
+        channel="reasoning_content" if thinking else "content",
+    )
 
     while True:
         try:
             kind, payload = events.get(timeout=15)
         except queue.Empty:
-            yield _sse_delta(completion_id, created, model, None, "审查仍在进行...\n")
+            yield _sse_delta(
+                completion_id,
+                created,
+                model,
+                None,
+                "审查仍在进行...\n",
+                channel="reasoning_content" if thinking else "content",
+            )
             continue
         if kind == "result":
             yield _sse_delta(completion_id, created, model, None, payload["report"])
@@ -287,12 +317,14 @@ def _sse_delta(
     model: str,
     role: Literal["assistant"] | None,
     content: str,
+    *,
+    channel: Literal["content", "reasoning_content"] = "content",
 ) -> str:
     delta: dict[str, str] = {}
     if role:
         delta["role"] = role
     if content:
-        delta["content"] = content
+        delta[channel] = content
     return "data: " + json.dumps(
         {
             "id": completion_id,

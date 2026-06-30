@@ -83,6 +83,8 @@ FastGPT commonly exposes file links as `array<string>` and may render them as a 
 6. For streaming, emit an immediate assistant chunk, progress text, periodic heartbeat text for long tasks, the final report, a stop chunk, and `[DONE]`.
 7. Surface business errors as assistant text in streaming mode when the caller is an LLM node; platform model calls often display HTTP errors poorly.
 
+When the platform supports think/reasoning displays, send non-final progress to `delta.reasoning_content` and the final answer/report to `delta.content`. Keep this to execution status and evidence-free process summaries; do not expose hidden chain-of-thought. Provide a request flag such as `thinking=false` to fall back to ordinary `content` progress for platforms that ignore reasoning fields.
+
 Keep the wrapper thin. The original agent should still own parsing files, calling OCR/model providers, ranking, and rendering reports.
 
 ## Dify/FastGPT Integration

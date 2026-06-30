@@ -223,6 +223,8 @@ Model: batch-resume-review-agent
 API Key: 任意占位值
 ```
 
+`batch-resume-review-llm` 默认开启 `thinking=true`。流式进度会放在 `delta.reasoning_content`，最终报告放在 `delta.content`。如果平台不展示 think/reasoning 内容，可在请求里传 `"thinking": false`，让进度也走普通 content。
+
 工作流中使用 LLM 节点，将上游变量拼入 prompt：
 
 ```text
@@ -333,6 +335,7 @@ curl -H "Content-Type: application/json" \
   -d '{
     "model": "batch-resume-review-agent",
     "stream": false,
+    "thinking": true,
     "dry_run": true,
     "messages": [
       {

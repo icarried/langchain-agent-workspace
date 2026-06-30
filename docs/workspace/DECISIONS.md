@@ -92,4 +92,4 @@
 
 - 决策: 在 `tender-format-review` 内新增 `openai_compatible_api.py`，复用原 `review_tender_format` 服务层，不复制智能体目录。
 - 原因: 招标文件审查的原 CLI/API/MCP 已稳定，当前只需要让 Dify/FastGPT 的 LLM 节点可以流式接入；薄包装能避免业务逻辑分叉。
-- 影响: 新入口提供 `GET /v1/models` 和 `POST /v1/chat/completions`，模型 ID 为 `tender-format-review-agent`。prompt 通过“招标文件”区块传入服务端 `.docx` 路径或 HTTP(S) `.docx` 链接；远程文件临时下载后交给原服务层，报告仍由原 LangGraph 工作流生成。为兼容当前 FastGPT/MinIO 部署，临时将 `10.71.2.94:9000` 的实际传输地址映射为 `127.0.0.1:9002`，同时保留原始 `Host` 头；修正 FastGPT 签名地址后应删除该映射。
+- 影响: 新入口提供 `GET /v1/models` 和 `POST /v1/chat/completions`，模型 ID 为 `tender-format-review-agent`。prompt 通过“招标文件”区块传入服务端 `.docx` 路径或 HTTP(S) `.docx` 链接；远程文件临时下载后交给原服务层，报告仍由原 LangGraph 工作流生成。流式模式默认把非最终进度写入 `delta.reasoning_content`，最终报告写入 `delta.content`，可用 `thinking=false` 回退。为兼容当前 FastGPT/MinIO 部署，临时将 `10.71.2.94:9000` 的实际传输地址映射为 `127.0.0.1:9002`，同时保留原始 `Host` 头；修正 FastGPT 签名地址后应删除该映射。

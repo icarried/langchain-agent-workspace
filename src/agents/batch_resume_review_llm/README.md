@@ -65,6 +65,8 @@ Invoke-RestMethod `
 
 流式请求返回 `text/event-stream`，事件格式兼容 OpenAI `chat.completion.chunk`，最后返回 `data: [DONE]`。内部仍调用原两阶段审查流程，不降低审查质量。
 
+默认 `thinking=true`：解析进度、文件接收和“仍在审查”等非最终输出会写入 `delta.reasoning_content`，最终报告写入 `delta.content`。如果平台不显示 think/reasoning 内容，可在请求中传 `"thinking": false`，让进度也走普通 `content`。
+
 ## 同步 REST 和 MCP
 
 同步 REST 仍可启动：

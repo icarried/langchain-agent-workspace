@@ -92,7 +92,26 @@ def test_chat_completions_stream_model_probe_without_review_input() -> None:
         text = "".join(response.iter_text())
 
     assert "batch-resume-review-agent 已就绪" in text
+    assert "reasoning_content" in text
     assert "data: [DONE]" in text
+
+
+def test_chat_completions_stream_can_disable_thinking(tmp_path: Path) -> None:
+    resume = _write_resume(tmp_path / "candidate.txt", "姓名：张三\n本科\nPython\n")
+    payload = _chat_payload([resume], stream=True)
+    payload["thinking"] = False
+
+    with TestClient(app).stream(
+        "POST",
+        "/v1/chat/completions",
+        json=payload,
+    ) as response:
+        assert response.status_code == 200
+        text = "".join(response.iter_text())
+
+    assert "已接收 1 份简历" in text
+    assert "reasoning_content" not in text
+    assert '"content"' in text
 
 
 def test_extract_resume_paths_accepts_fastgpt_json_array() -> None:
@@ -128,6 +147,7 @@ def test_chat_completions_stream_dry_run(tmp_path: Path) -> None:
 
     assert "data: [DONE]" in text
     assert "已接收 2 份简历" in text
+    assert "reasoning_content" in text
     assert "# 批量简历审查与排序报告" in text
     chunks = [
         line.removeprefix("data: ")

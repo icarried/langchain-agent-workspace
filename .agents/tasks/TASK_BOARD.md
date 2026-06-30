@@ -25,7 +25,7 @@
   - 添加 LLM wrapper 测试并运行定向 pytest、ruff。
   - 更新相关文档和任务状态。
 - 验证:
-  - `python -m pytest tests\agents\test_tender_format_review_llm.py -q` 通过，7 个测试覆盖模型列表、非流式 dry-run、模型探测 readiness、流式 readiness、FastGPT JSON 数组解析、临时 MinIO 传输映射和流式 dry-run。
+  - `python -m pytest tests\agents\test_tender_format_review_llm.py -q` 通过，8 个测试覆盖模型列表、非流式 dry-run、模型探测 readiness、流式 readiness、`thinking=false` 回退、FastGPT JSON 数组解析、临时 MinIO 传输映射和流式 dry-run。
   - `ruff check src\agents\tender_format_review\openai_compatible_api.py tests\agents\test_tender_format_review_llm.py` 通过。
 - 最后更新: 2026-06-25
 
