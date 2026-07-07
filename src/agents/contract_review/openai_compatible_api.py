@@ -1,0 +1,360 @@
+from __future__ import annotations
+
+import json
+import queue
+import re
+import threading
+import time
+import uuid
+from collections.abc import Generator
+from typing import Any, Literal
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from .service import review_contract
+
+MODEL_ID = "contract-review-agent"
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: Any
+
+
+class ChatCompletionRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    model: str = MODEL_ID
+    messages: list[ChatMessage] = Field(default_factory=list)
+    stream: bool = False
+    provider: str = "deepseek"
+    review_model: str | None = None
+    dry_run: bool = False
+    thinking: bool = True
+
+
+class ParsedContractRequest(BaseModel):
+    contract_path: str
+    client_role: str = "甲方"
+    contract_type: str = ""
+    transaction_background: str = ""
+    provider: str = "deepseek"
+    review_model: str | None = None
+    dry_run: bool = False
+
+
+app = FastAPI(
+    title="Contract Review OpenAI-compatible API",
+    version="0.1.0",
+    description="OpenAI-compatible streaming adapter for FastGPT/Dify LLM nodes.",
+)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "agent": "contract-review", "model": MODEL_ID}
+
+
+@app.get("/v1/models")
+def list_models() -> dict[str, Any]:
+    return {
+        "object": "list",
+        "data": [{"id": MODEL_ID, "object": "model", "created": 0, "owned_by": "local-agent-workspace"}],
+    }
+
+
+@app.post("/v1/chat/completions")
+def create_chat_completion(request: ChatCompletionRequest) -> Any:
+    if request.model != MODEL_ID:
+        raise HTTPException(status_code=404, detail=f"model not found: {request.model}")
+    parsed = parse_contract_request(request)
+    if parsed is None:
+        content = _readiness_message()
+        if request.stream:
+            return StreamingResponse(
+                stream_text_response(content, request.model, thinking=request.thinking),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+        return _chat_completion_response(request.model, content)
+    if request.stream:
+        return StreamingResponse(
+            stream_chat_completion(parsed, request.model, thinking=request.thinking),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+    started = int(time.time())
+    result = _run_review(parsed)
+    return _chat_completion_response(request.model, result["report"], created=started)
+
+
+def parse_contract_request(request: ChatCompletionRequest) -> ParsedContractRequest | None:
+    text = "\n\n".join(_message_content_to_text(message.content) for message in request.messages)
+    contract_paths = _extract_paths_from_labeled_block(text, ["合同文件", "合同路径", "合同"])
+    if not contract_paths:
+        return None
+    return ParsedContractRequest(
+        contract_path=contract_paths[0],
+        client_role=_extract_scalar(text, ["委托方角色", "合同角色"]) or "甲方",
+        contract_type=_extract_scalar(text, ["合同类型"]) or "",
+        transaction_background=_extract_section_block(text, ["交易背景"], ["合同文件", "合同路径", "输出要求"]).strip(),
+        provider=request.provider,
+        review_model=request.review_model,
+        dry_run=request.dry_run,
+    )
+
+
+def stream_text_response(content: str, model: str, *, thinking: bool = True) -> Generator[str, None, None]:
+    completion_id = f"chatcmpl-{uuid.uuid4().hex}"
+    created = int(time.time())
+    yield _sse_delta(completion_id, created, model, "assistant", "")
+    yield _sse_delta(
+        completion_id,
+        created,
+        model,
+        None,
+        content,
+        channel="reasoning_content" if thinking else "content",
+    )
+    yield _sse_done(completion_id, created, model)
+    yield "data: [DONE]\n\n"
+
+
+def stream_chat_completion(
+    review_request: ParsedContractRequest,
+    model: str,
+    *,
+    thinking: bool = True,
+) -> Generator[str, None, None]:
+    completion_id = f"chatcmpl-{uuid.uuid4().hex}"
+    created = int(time.time())
+    events: queue.Queue[tuple[str, Any]] = queue.Queue()
+    worker = threading.Thread(target=_run_review_worker, args=(review_request, events), daemon=True)
+    worker.start()
+
+    yield _sse_delta(completion_id, created, model, "assistant", "")
+    yield _sse_delta(
+        completion_id,
+        created,
+        model,
+        None,
+        "已接收 1 份合同，开始解析和六维审查。\n\n",
+        channel="reasoning_content" if thinking else "content",
+    )
+    yield _sse_delta(
+        completion_id,
+        created,
+        model,
+        None,
+        f"合同文件：{review_request.contract_path}\n",
+        channel="reasoning_content" if thinking else "content",
+    )
+    while True:
+        try:
+            kind, payload = events.get(timeout=15)
+        except queue.Empty:
+            yield _sse_delta(
+                completion_id,
+                created,
+                model,
+                None,
+                "合同审查仍在进行...\n",
+                channel="reasoning_content" if thinking else "content",
+            )
+            continue
+        if kind == "result":
+            yield _sse_delta(completion_id, created, model, None, payload["report"])
+            yield _sse_done(completion_id, created, model)
+            yield "data: [DONE]\n\n"
+            return
+        if kind == "error":
+            yield _sse_delta(completion_id, created, model, None, f"合同审查失败：{payload}\n")
+            yield _sse_done(completion_id, created, model)
+            yield "data: [DONE]\n\n"
+            return
+
+
+def _run_review_worker(review_request: ParsedContractRequest, events: queue.Queue[tuple[str, Any]]) -> None:
+    try:
+        events.put(("result", _run_review(review_request)))
+    except Exception as exc:
+        events.put(("error", str(exc)))
+
+
+def _run_review(review_request: ParsedContractRequest) -> dict[str, Any]:
+    return review_contract(
+        review_request.contract_path,
+        client_role=review_request.client_role,
+        contract_type=review_request.contract_type,
+        transaction_background=review_request.transaction_background,
+        provider=review_request.provider,
+        model=review_request.review_model,
+        dry_run=review_request.dry_run,
+    )
+
+
+def _chat_completion_response(model: str, content: str, *, created: int | None = None) -> JSONResponse:
+    return JSONResponse(
+        {
+            "id": f"chatcmpl-{uuid.uuid4().hex}",
+            "object": "chat.completion",
+            "created": created or int(time.time()),
+            "model": model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+    )
+
+
+def _readiness_message() -> str:
+    return (
+        "contract-review-agent 已就绪。\n\n"
+        "请在正式审查时提供以下格式：\n\n"
+        "委托方角色：甲方\n"
+        "合同类型：技术服务合同\n"
+        "交易背景：甲方采购设备运行数据分析平台开发服务\n\n"
+        "合同文件：\n"
+        "<合同文件链接或服务端路径>\n\n"
+        "输出要求：请输出合同审查报告。"
+    )
+
+
+def _sse_delta(
+    completion_id: str,
+    created: int,
+    model: str,
+    role: Literal["assistant"] | None,
+    content: str,
+    *,
+    channel: Literal["content", "reasoning_content"] = "content",
+) -> str:
+    delta: dict[str, str] = {}
+    if role:
+        delta["role"] = role
+    if content:
+        delta[channel] = content
+    return "data: " + json.dumps(
+        {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+        },
+        ensure_ascii=False,
+    ) + "\n\n"
+
+
+def _sse_done(completion_id: str, created: int, model: str, *, finish_reason: str = "stop") -> str:
+    return "data: " + json.dumps(
+        {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
+        },
+        ensure_ascii=False,
+    ) + "\n\n"
+
+
+def _message_content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                if isinstance(item.get("text"), str):
+                    parts.append(item["text"])
+                elif isinstance(item.get("input_text"), str):
+                    parts.append(item["input_text"])
+        return "\n".join(parts)
+    return ""
+
+
+def _extract_paths_from_labeled_block(text: str, labels: list[str]) -> list[str]:
+    block = _extract_section_block(text, labels, ["输出要求", "审查要求"])
+    json_paths = _extract_json_array_paths(block)
+    if json_paths:
+        return _dedupe(json_paths)
+    paths: list[str] = []
+    for raw_line in block.splitlines():
+        line = raw_line.strip().strip("-* ")
+        if line:
+            paths.extend(_extract_paths_from_line(line))
+    return _dedupe(paths)
+
+
+def _extract_scalar(text: str, labels: list[str]) -> str:
+    for label in labels:
+        match = re.search(rf"^{re.escape(label)}\s*[:：]\s*(.+)$", text, flags=re.MULTILINE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def _extract_section_block(text: str, start_labels: list[str], end_labels: list[str]) -> str:
+    lines: list[str] = []
+    collecting = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line and not collecting:
+            continue
+        if any(_starts_section(line, label) for label in start_labels):
+            collecting = True
+            line = _strip_section_label(line)
+            if line:
+                lines.append(line)
+            continue
+        if collecting and any(_starts_section(line, label) for label in end_labels):
+            break
+        if collecting:
+            lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _extract_json_array_paths(block: str) -> list[str]:
+    text = block.strip()
+    if not text:
+        return []
+    start = text.find("[")
+    if start < 0:
+        return []
+    try:
+        value, _ = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _extract_paths_from_line(line: str) -> list[str]:
+    urls = re.findall(r"https?://[^\s\"'<>，]+", line)
+    if urls:
+        return urls
+    parts = [part.strip().strip("\"'") for part in re.split(r"[,，;；]", line)]
+    return [part for part in parts if part and not part.endswith("：")]
+
+
+def _starts_section(line: str, label: str) -> bool:
+    return bool(re.match(rf"^{re.escape(label)}\s*[:：]", line, flags=re.IGNORECASE))
+
+
+def _strip_section_label(line: str) -> str:
+    return re.sub(r"^[^:：]+[:：]\s*", "", line, count=1).strip()
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value in values:
+        key = value.lower()
+        if key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result
+

@@ -9,6 +9,110 @@
 
 ## 当前任务
 
+### T-032 将合同审查与公文格式检查智能体封装为 OpenAI-compatible LLM
+
+- 状态: Done
+- 目标: 确认近期新增智能体中尚未 OpenAI-compatible 包装的对象，并为 `contract-review`、`official-document-review` 增加 FastGPT/Dify 可用的 LLM 入口。
+- 验收标准:
+  - `contract-review` 新增 `openai_compatible_api.py`，模型 ID 为 `contract-review-agent`。
+  - `official-document-review` 新增 `openai_compatible_api.py`，模型 ID 为 `official-document-review-agent`。
+  - 两个入口均提供 `GET /v1/models` 和 `POST /v1/chat/completions`。
+  - 支持非流式和流式 SSE，普通模型探测提示返回 readiness。
+  - 增加定向测试并同步登记表、运行手册。
+- 执行计划:
+  - 盘点 `contract-review`、`official-document-review`、`smart-resume-screening` 的包装状态。
+  - 为未包装的两个智能体新增薄包装 FastAPI app。
+  - 补充模型列表、非流式 dry-run、流式 dry-run、thinking=false 和模型探测测试。
+  - 运行定向 pytest 和 Ruff。
+- 验证:
+  - `conda run -n langchain python -m pytest tests\agents\test_contract_review_llm.py tests\agents\test_official_document_review_llm.py -q` 通过，10 个测试通过。
+  - `conda run -n langchain ruff check src\agents\contract_review\openai_compatible_api.py src\agents\official_document_review\openai_compatible_api.py tests\agents\test_contract_review_llm.py tests\agents\test_official_document_review_llm.py` 通过。
+- 最后更新: 2026-07-07
+
+### T-031 将智能简历结构化初筛智能体封装为 OpenAI-compatible LLM
+
+- 状态: Done
+- 目标: 为 `smart-resume-screening` 增加面向 FastGPT/Dify 自定义 LLM 节点的 OpenAI-compatible 入口。
+- 验收标准:
+  - 保留原 CLI/API/MCP 入口不变，新增 `openai_compatible_api.py`。
+  - 提供 `GET /v1/models` 和 `POST /v1/chat/completions`，模型 ID 为 `smart-resume-screening-agent`。
+  - 支持 `stream=false` 和 `stream=true`，流式输出 SSE chunk 并以 `[DONE]` 结束。
+  - 普通模型探测提示返回 200 readiness 文本，不因缺少业务输入返回 400。
+  - 可从 prompt 的“岗位要求”和“简历文件”区块解析本地路径、多行链接或 FastGPT JSON 数组。
+  - 增加定向测试，并同步登记表和运行手册。
+- 执行计划:
+  - 参考 `openai-compatible-llm-wrapper` skill 和现有批量简历 LLM 适配器。
+  - 新增薄包装 FastAPI app，复用 `screen_resumes` 服务层。
+  - 补充非流式、流式、模型探测、thinking=false 和 JSON 数组解析测试。
+  - 更新相关文档和任务状态。
+- 验证:
+  - `conda run -n langchain python -m pytest tests\agents\test_smart_resume_screening_llm.py -q` 通过，6 个测试通过。
+  - `conda run -n langchain ruff check src\agents\smart_resume_screening\openai_compatible_api.py tests\agents\test_smart_resume_screening_llm.py` 通过。
+- 最后更新: 2026-07-07
+
+### T-030 基于 FastGPT 智能简历筛选工作流创建结构化初筛智能体
+
+- 状态: Done
+- 目标: 将 `智能简历筛选(1).json` 中岗位基本信息、硬性条件、加分项、淘汰项、量化评分和排行榜输出的经验转化为本工作区轻量智能体。
+- 验收标准:
+  - 新增 `smart-resume-screening` 智能体，源码位于 `src/agents/smart_resume_screening/`。
+  - 智能体保留 FastGPT 工作流中结构化招聘条件与评分排行的经验，但不复制单一长提示词。
+  - 支持多份 DOCX、文本型 PDF、TXT、MD 简历解析与 dry-run。
+  - 支持 CLI、REST API 和 MCP。
+  - 补充最小测试、样例、README、工作区登记表、运行手册和环境变量模板。
+- 执行计划:
+  - 解析 `智能简历筛选(1).json` 的系统提示词和输入/输出规格。
+  - 创建岗位条件解析、候选人加载、确定性初筛评分和报告整理工作流。
+  - 增加 CLI/API/MCP 入口和 dry-run 测试。
+  - 同步任务板、登记表、运行手册和设计决策。
+- 验证:
+  - `conda run -n langchain python -m pytest tests\agents\test_smart_resume_screening.py -q` 通过，7 个测试通过。
+  - `conda run -n langchain ruff check src\agents\smart_resume_screening tests\agents\test_smart_resume_screening.py` 通过。
+  - 内置样例 CLI dry-run 成功，生成 `临时文件\智能简历筛选_dry_run.md`。
+- 最后更新: 2026-07-07
+
+### T-029 基于 FastGPT 公文优化工作流创建公文格式检查智能体
+
+- 状态: Done
+- 目标: 将 `公文优化.json` 中“上传单份文件、调用格式检测、整理检测结果”的经验转化为本工作区的 LangChain / LangGraph 智能体。
+- 验收标准:
+  - 新增 `official-document-review` 智能体，源码位于 `src/agents/official_document_review/`。
+  - 智能体保留 FastGPT 工作流中文件检测与报告美化的分层经验，但不依赖原内网 HTTP 检测地址。
+  - 支持 DOCX、文本型 PDF、TXT、MD 的解析与 dry-run。
+  - 支持 CLI、REST API 和 MCP。
+  - 补充最小测试、样例、README、工作区登记表、运行手册和环境变量模板。
+- 执行计划:
+  - 解析 `公文优化.json` 的节点、输入、HTTP 检测和输出提示词。
+  - 创建本地公文解析、确定性格式检查、报告整理 LangGraph 工作流。
+  - 增加 CLI/API/MCP 入口和 dry-run 测试。
+  - 同步任务板、登记表、运行手册和设计决策。
+- 验证:
+  - `conda run -n langchain python -m pytest tests\agents\test_official_document_review.py -q` 通过，7 个测试通过。
+  - `conda run -n langchain ruff check src\agents\official_document_review tests\agents\test_official_document_review.py` 通过。
+  - 内置样例 CLI dry-run 成功，生成 `临时文件\公文格式检查_dry_run.md`。
+- 最后更新: 2026-07-07
+
+### T-028 基于 FastGPT 合同审查工作流创建合同审查智能体
+
+- 状态: Done
+- 目标: 阅读用户提供的 FastGPT 导出 JSON，选择适合转化的工作流，吸收其中有效经验并在本工作区创建一个对应的 LangChain / LangGraph 智能体。
+- 验收标准:
+  - 已盘点 `C:\Users\Lenovo\Desktop\智能配置文件体\` 下 FastGPT 导出工作流，并说明首选转化对象。
+  - 新增 `contract-review` 智能体，源码位于 `src/agents/contract_review/`。
+  - 智能体保留合同审查大师中较好的表单上下文、六维审查、评分评级和整改建议经验，但不照抄 FastGPT 节点流程。
+  - 支持 CLI、REST API、MCP 和 dry-run 验证。
+  - 补充最小测试、样例、README、工作区登记表、运行手册、环境变量模板和设计决策。
+- 执行计划:
+  - 阅读工作区文档、任务台账和 `langchain-agent-builder` skill。
+  - 解析 FastGPT JSON 的节点、输入、边和提示词轮廓，选择首个转化对象。
+  - 创建合同解析、分块、六维审查、评分汇总、CLI/API/MCP 入口。
+  - 增加 dry-run 测试并同步文档。
+- 验证:
+  - `conda run -n langchain python -m pytest tests\agents\test_contract_review.py -q` 通过，8 个测试通过。
+  - `conda run -n langchain ruff check src\agents\contract_review tests\agents\test_contract_review.py` 通过。
+  - 内置样例 CLI dry-run 成功，生成 `临时文件\合同审查_dry_run.md`；终端中文回显在 Windows conda run 下仍可能乱码，但 UTF-8 报告文件内容正常。
+- 最后更新: 2026-07-07
+
 ### T-027 收编知识库智能体为独立子项目
 
 - 状态: Done

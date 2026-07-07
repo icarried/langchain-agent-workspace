@@ -10,6 +10,7 @@
 - 发现问题要沉淀。无法立即修复的问题记录到 `docs/operations/PROBLEM_LOG.md`。
 - 变更要可复盘。重要设计取舍记录到 `docs/workspace/DECISIONS.md`。
 - 尽量保持小步提交和小范围修改。不要重构与任务无关的内容。
+- 涉及 Docker、容器、WSL、端口转发、FastGPT、Dify、MinIO 或 Windows/WSL 连通性时，先使用 `windows-wsl-dev-environment`，读取环境账本，再决定命令运行在 PowerShell、WSL 还是容器内。
 
 ## 推荐工作流
 
@@ -35,4 +36,3 @@
 - 启动与调试: `docs/development/RUN_AND_DEBUG.md`
 - 密钥管理: `docs/operations/SECRETS.md`
 - 问题日志: `docs/operations/PROBLEM_LOG.md`
-

@@ -99,3 +99,33 @@
 - 决策: 外部导入的 `langchain_knowledge_base` 保留独立 `pyproject.toml`、`.env.example`、Dockerfile、Compose 和 README；运行、测试、入库、问答、Docker Compose 均以 `src/agents/langchain_knowledge_base/` 为工作目录。
 - 原因: 用户希望该智能体完成后可从多智能体工作区分离出去独立交付；如果强行改成工作区根包导入，会增加分离成本和路径耦合。
 - 影响: 工作区只登记其位置、状态、运行方法和密钥变量，不把它纳入根目录统一启动方式。该智能体使用 Chroma `PersistentClient` 本地持久化，非 Docker 默认写入 `data/chroma/`，Compose 写入命名卷 `kb_chroma_data` 挂载的 `/app/data/chroma`；默认不启动独立 Chroma 服务。
+
+## 2026-07-07 - FastGPT 工作流转化优先抽取可复用经验
+
+- 决策: 首个 FastGPT JSON 转化对象选择 `合同审查大师(1).json`，落地为 `contract-review`。实现保留“表单上下文、六维审查、评分评级、整改建议”的设计经验，但不照搬 FastGPT 的节点 ID、平台 OCR 子应用或顺序编排。
+- 原因: 合同审查主题边界清晰，能复用工作区已有 LangGraph 分块审查模式；相比电厂问数工作流，它不依赖未知数据库 schema；相比简历/RAG 工作流，它不会与已有智能体重复。
+- 影响: 后续转化 FastGPT 工作流时应先判断哪些节点体现了业务经验，哪些只是平台编排细节。工作区智能体优先沉淀确定性解析、分块、dry-run、CLI/API/MCP 和测试，而不是逐节点复制。
+
+## 2026-07-07 - 公文优化转化为本地确定性检查加报告整理
+
+- 决策: `公文优化.json` 转化为 `official-document-review`，保留“上传文件 -> 检测 -> 美化输出”的经验，但不直接依赖原工作流中的 `http://172.16.1.24:30019/detect` 内网服务。
+- 原因: 内网检测服务不可保证在本工作区可达；把第一版做成本地 DOCX/TXT/MD/PDF 解析和确定性检查，可测试、可离线 dry-run，后续若检测服务稳定再作为可选工具接入。
+- 影响: 第一版只做 GB/T 9704-2012 基础结构与版式线索检查，不声称完整替代人工公文审核或单位模板审核。
+
+## 2026-07-07 - 智能简历筛选保留结构化评分口径而非复制长提示词
+
+- 决策: `智能简历筛选(1).json` 转化为 `smart-resume-screening`，重点沉淀岗位参数、硬性条件、优先条件、淘汰条件、量化评分和排行榜输出；实现上采用确定性初筛评分加可选模型报告整理。
+- 原因: 工作区已有更完整的 `batch-resume-review`，不宜重复实现 OCR、远程 URL 和复杂招聘规则；这个 FastGPT 工作流的价值在于结构化筛选配置和快速排行榜。
+- 影响: 后续简历场景按复杂度选型：快速岗位条件筛选用 `smart-resume-screening`，完整批量审查和交付包装用 `batch-resume-review`。
+
+## 2026-07-07 - 智能简历结构化初筛增加 OpenAI-compatible 薄包装
+
+- 决策: 在 `smart-resume-screening` 内新增 `openai_compatible_api.py`，模型 ID 为 `smart-resume-screening-agent`，复用原 `screen_resumes` 服务层解析岗位要求、简历路径、打分和生成报告。
+- 原因: FastGPT/Dify 的 LLM 节点更适合流式展示筛选进度和最终报告；薄包装能避免业务逻辑分叉，也保持该智能体的轻量定位。
+- 影响: 该入口适合服务端本地路径或平台已能传递的文件路径；远程 MinIO URL、OCR、多格式复杂解析仍优先使用 `batch-resume-review-llm`。
+
+## 2026-07-07 - 合同审查与公文格式检查补齐 OpenAI-compatible 入口
+
+- 决策: 为 `contract-review` 和 `official-document-review` 分别新增 `openai_compatible_api.py`，模型 ID 分别为 `contract-review-agent` 和 `official-document-review-agent`，均复用原服务层。
+- 原因: 用户希望近期从 FastGPT JSON 转化出的智能体都能作为 FastGPT/Dify 自定义 LLM 节点调用；薄包装可以统一模型探测、流式输出和平台接入方式。
+- 影响: 两个入口均支持 readiness、非流式、流式 SSE 和 `thinking=false`；文件读取仍由原智能体服务层负责，复杂远程文件下载和 OCR 后续按实际平台需要单独扩展。

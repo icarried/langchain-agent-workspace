@@ -463,6 +463,292 @@ C:\Users\Lenovo\.conda\envs\langchain\python.exe scripts\call_tender_format_revi
 
 更多智能体 MCP 封装经验见 `docs/development/AGENT_MCP_WRAPPING_GUIDE.md`。
 
+## 合同审查智能体
+
+`contract-review` 来自 FastGPT 导出工作流“合同审查大师”的经验转化，重点保留表单上下文、六维审查、评分评级和整改建议。
+
+先执行 dry-run，确认合同可解析且分块合理：
+
+```powershell
+conda activate langchain
+python -m src.agents.contract_review review `
+  src\agents\contract_review\examples\示例服务合同.md `
+  --client-role 甲方 `
+  --contract-type 技术服务合同 `
+  --transaction-background "甲方采购设备运行数据分析平台开发服务" `
+  --output 临时文件\合同审查_dry_run.md `
+  --dry-run
+```
+
+正式调用 DeepSeek：
+
+```powershell
+python -m src.agents.contract_review review `
+  path\to\contract.docx `
+  --client-role 甲方 `
+  --contract-type 采购合同 `
+  --transaction-background "采购设备与配套服务" `
+  --provider deepseek
+```
+
+启动 API 服务：
+
+```powershell
+uvicorn src.agents.contract_review.api:app --reload --port 8009
+```
+
+用内置样例测试 API dry-run：
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8009/review `
+  -ContentType "application/json" `
+  -Body '{"contract_path":"src/agents/contract_review/examples/示例服务合同.md","client_role":"甲方","contract_type":"技术服务合同","transaction_background":"采购数据分析平台","dry_run":true}'
+```
+
+启动 MCP server：
+
+```powershell
+python -m src.agents.contract_review.mcp_server
+python -m src.agents.contract_review.mcp_server --transport http --host 127.0.0.1 --port 8009 --path /mcp
+```
+
+MCP tool `review_contract` 接收 base64 文件上传：
+
+```json
+{
+  "contract_base64": "<base64 encoded docx/pdf/txt>",
+  "contract_filename": "contract.docx",
+  "client_role": "甲方",
+  "contract_type": "技术服务合同",
+  "transaction_background": "交易背景文本",
+  "dry_run": true
+}
+```
+
+### OpenAI-compatible LLM 入口
+
+用于 FastGPT/Dify 自定义模型节点流式调用，不替代原 `/review` API：
+
+```powershell
+uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --port 8014
+```
+
+模型配置：
+
+- Base URL: `http://<服务地址>:8014/v1`
+- Model: `contract-review-agent`
+- Stream: 开启
+- API Key: 当前服务不校验，可填平台要求的占位值
+
+LLM 节点提示词推荐格式：
+
+```text
+委托方角色：甲方
+合同类型：技术服务合同
+交易背景：甲方采购设备运行数据分析平台开发服务
+
+合同文件：
+src/agents/contract_review/examples/示例服务合同.md
+
+输出要求：请输出合同审查报告。
+```
+
+## 公文格式检查智能体
+
+`official-document-review` 来自 FastGPT 导出工作流“公文优化”的经验转化，重点保留“文件检测 -> 检测结果整理输出”的分层。第一版使用本地确定性检查，不依赖原工作流中的内网 HTTP 检测地址。
+
+先执行 dry-run，确认公文可解析且检查结果正常：
+
+```powershell
+conda activate langchain
+python -m src.agents.official_document_review review `
+  src\agents\official_document_review\examples\示例通知.md `
+  --document-type 通知 `
+  --output 临时文件\公文格式检查_dry_run.md `
+  --dry-run
+```
+
+正式调用 DeepSeek 美化报告：
+
+```powershell
+python -m src.agents.official_document_review review `
+  path\to\official-document.docx `
+  --document-type 通知 `
+  --provider deepseek
+```
+
+启动 API 服务：
+
+```powershell
+uvicorn src.agents.official_document_review.api:app --reload --port 8010
+```
+
+用内置样例测试 API dry-run：
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8010/review `
+  -ContentType "application/json" `
+  -Body '{"document_path":"src/agents/official_document_review/examples/示例通知.md","document_type":"通知","dry_run":true}'
+```
+
+启动 MCP server：
+
+```powershell
+python -m src.agents.official_document_review.mcp_server
+python -m src.agents.official_document_review.mcp_server --transport http --host 127.0.0.1 --port 8010 --path /mcp
+```
+
+MCP tool `review_official_document` 接收 base64 文件上传：
+
+```json
+{
+  "document_base64": "<base64 encoded docx/pdf/txt>",
+  "document_filename": "notice.docx",
+  "document_type": "通知",
+  "dry_run": true
+}
+```
+
+### OpenAI-compatible LLM 入口
+
+用于 FastGPT/Dify 自定义模型节点流式调用，不替代原 `/review` API：
+
+```powershell
+uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0.0.0 --port 8013
+```
+
+模型配置：
+
+- Base URL: `http://<服务地址>:8013/v1`
+- Model: `official-document-review-agent`
+- Stream: 开启
+- API Key: 当前服务不校验，可填平台要求的占位值
+
+LLM 节点提示词推荐格式：
+
+```text
+公文类型：通知
+
+公文文件：
+src/agents/official_document_review/examples/示例通知.md
+
+输出要求：请输出公文格式检查报告。
+```
+
+## 智能简历结构化初筛智能体
+
+`smart-resume-screening` 来自 FastGPT 导出工作流“智能简历筛选”的经验转化，重点保留岗位基本信息、硬性条件、优先条件、淘汰条件、量化评分和排行榜输出。
+
+先执行 dry-run，确认条件解析和候选人排序：
+
+```powershell
+python -m src.agents.smart_resume_screening screen `
+  src\agents\smart_resume_screening\examples\候选人A_匹配.md `
+  src\agents\smart_resume_screening\examples\候选人B_缺硬性.md `
+  --job-description src\agents\smart_resume_screening\examples\人工智能岗位要求.md `
+  --output 临时文件\智能简历筛选_dry_run.md `
+  --dry-run
+```
+
+正式调用 DeepSeek：
+
+```powershell
+python -m src.agents.smart_resume_screening screen `
+  path\to\candidate-a.docx `
+  path\to\candidate-b.pdf `
+  --job-description path\to\jd.txt `
+  --provider deepseek
+```
+
+也可以直接通过参数传入筛选条件：
+
+```powershell
+python -m src.agents.smart_resume_screening screen `
+  path\to\candidate-a.txt `
+  --position-name "AI 应用开发工程师" `
+  --hard-condition 本科 `
+  --hard-condition Python `
+  --bonus-condition FastAPI `
+  --reject-condition 强制通过 `
+  --dry-run
+```
+
+启动 API 服务：
+
+```powershell
+uvicorn src.agents.smart_resume_screening.api:app --reload --port 8011
+```
+
+主接口为 `POST /screen`：
+
+```json
+{
+  "resume_paths": ["src/agents/smart_resume_screening/examples/候选人A_匹配.md"],
+  "hard_conditions": ["本科", "计算机", "Python"],
+  "bonus_conditions": ["上线"],
+  "reject_conditions": ["强制通过"],
+  "dry_run": true
+}
+```
+
+启动 MCP server：
+
+```powershell
+python -m src.agents.smart_resume_screening.mcp_server
+python -m src.agents.smart_resume_screening.mcp_server --transport http --host 127.0.0.1 --port 8011 --path /mcp
+```
+
+MCP tool `screen_resumes` 接收多份 base64 简历：
+
+```json
+{
+  "resumes": [
+    {"filename": "candidate-a.pdf", "content_base64": "<base64>"}
+  ],
+  "hard_conditions": ["本科", "Python"],
+  "bonus_conditions": ["FastAPI"],
+  "reject_conditions": ["强制通过"],
+  "dry_run": true
+}
+```
+
+### OpenAI-compatible LLM 入口
+
+用于 FastGPT/Dify 自定义模型节点流式调用，不替代原 `/screen` API：
+
+```powershell
+uvicorn src.agents.smart_resume_screening.openai_compatible_api:app --host 0.0.0.0 --port 8012
+```
+
+模型配置：
+
+- Base URL: `http://<服务地址>:8012/v1`
+- Model: `smart-resume-screening-agent`
+- Stream: 开启
+- API Key: 当前服务不校验，可填平台要求的占位值
+
+LLM 节点提示词推荐格式：
+
+```text
+岗位要求：
+职位名称：AI 应用开发工程师
+硬性条件：本科，计算机，Python
+优先条件：FastAPI，上线
+淘汰条件：强制通过
+
+简历文件：
+src/agents/smart_resume_screening/examples/候选人A_匹配.md
+src/agents/smart_resume_screening/examples/候选人B_缺硬性.md
+
+输出要求：请输出智能简历筛选排行榜。
+```
+
+FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的文件链接或服务端路径。当前轻量初筛入口复用 `screen_resumes`，适合服务端本地路径；需要远程 MinIO URL、OCR 或多格式复杂解析时优先使用 `batch-resume-review-llm`。
+
 ## 批量简历审查与排序智能体
 
 使用多份本地测试夹具执行 dry-run：

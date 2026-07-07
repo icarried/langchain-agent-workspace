@@ -11,6 +11,8 @@ htmlcov/
 .venv/
 venv/
 env/
+!.codex/env/
+!.codex/env/*.md
 
 # Local secrets
 .env

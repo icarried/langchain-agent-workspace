@@ -12,6 +12,48 @@
 
 ## 智能体列表
 
+### smart-resume-screening
+
+- 状态: Ready
+- 用途: 基于 FastGPT 导出工作流“智能简历筛选”的有效经验创建的结构化初筛智能体，按岗位基本信息、硬性条件、优先条件和淘汰条件对多份简历打分排序。
+- 源码路径: `src/agents/smart_resume_screening/`
+- 运行入口: `python -m src.agents.smart_resume_screening screen <resume-a> <resume-b> --job-description <jd.txt> --output <report.md>`
+- MCP 入口: stdio `python -m src.agents.smart_resume_screening.mcp_server`；HTTP `python -m src.agents.smart_resume_screening.mcp_server --transport http --host 127.0.0.1 --port 8011 --path /mcp`；tool 名称 `screen_resumes`。
+- API 入口: `uvicorn src.agents.smart_resume_screening.api:app --reload --port 8011`，主接口 `POST /screen`。
+- OpenAI-compatible 入口: `uvicorn src.agents.smart_resume_screening.openai_compatible_api:app --host 0.0.0.0 --port 8012`，模型 ID `smart-resume-screening-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- 调试方式: 先用内置 `src/agents/smart_resume_screening/examples/` 执行 `--dry-run`，确认条件解析、候选人状态和排行榜；正式运行再接入 DeepSeek 或 DashScope/Qwen 整理报告。
+- 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `SMART_RESUME_SCREENING_MODEL`、`SMART_RESUME_SCREENING_BASE_URL`。
+- 关联任务: T-030、T-031
+- 备注: 本智能体定位为轻量结构化初筛配置器；复杂 OCR、远程 URL、高校参照、规则调整和独立打包仍优先使用 `batch-resume-review`。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“岗位要求”和“简历文件”区块读取服务端路径或文件链接。
+
+### official-document-review
+
+- 状态: Ready
+- 用途: 基于 FastGPT 导出工作流“公文优化”的有效经验创建的公文格式检查与优化智能体，检查文件是否符合《党政机关公文格式》GB/T 9704-2012 的基础版式和结构要求，并整理整改建议。
+- 源码路径: `src/agents/official_document_review/`
+- 运行入口: `python -m src.agents.official_document_review review <document> --document-type 通知 --output <report.md>`
+- MCP 入口: stdio `python -m src.agents.official_document_review.mcp_server`；HTTP `python -m src.agents.official_document_review.mcp_server --transport http --host 127.0.0.1 --port 8010 --path /mcp`；tool 名称 `review_official_document`。
+- API 入口: `uvicorn src.agents.official_document_review.api:app --reload --port 8010`，主接口 `POST /review`。
+- OpenAI-compatible 入口: `uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0.0.0 --port 8013`，模型 ID `official-document-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- 调试方式: 先用内置 `src/agents/official_document_review/examples/示例通知.md` 执行 `--dry-run`，确认文件解析、确定性检查和报告结构；正式运行再接入 DeepSeek 或 DashScope/Qwen 美化报告。
+- 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `OFFICIAL_DOCUMENT_REVIEW_MODEL`、`OFFICIAL_DOCUMENT_REVIEW_BASE_URL`。
+- 关联任务: T-029、T-032
+- 备注: 第一版不接入 FastGPT 原工作流中的内网 `detect` 服务，不处理扫描 PDF OCR，也不生成带批注的 Word 修订稿；报告不替代单位公文审核流程。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“公文文件”区块读取服务端路径或文件链接。
+
+### contract-review
+
+- 状态: Ready
+- 用途: 基于 FastGPT 导出工作流“合同审查大师”的有效经验创建的合同六维审查智能体，按委托方角色、合同类型和交易背景审查合同，输出风险清单、评分评级和整改建议。
+- 源码路径: `src/agents/contract_review/`
+- 运行入口: `python -m src.agents.contract_review review <contract> --client-role 甲方 --contract-type 技术服务合同 --transaction-background <背景> --output <report.md>`
+- MCP 入口: stdio `python -m src.agents.contract_review.mcp_server`；HTTP `python -m src.agents.contract_review.mcp_server --transport http --host 127.0.0.1 --port 8009 --path /mcp`；tool 名称 `review_contract`。
+- API 入口: `uvicorn src.agents.contract_review.api:app --reload --port 8009`，主接口 `POST /review`。
+- OpenAI-compatible 入口: `uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --port 8014`，模型 ID `contract-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- 调试方式: 先用内置 `src/agents/contract_review/examples/示例服务合同.md` 执行 `--dry-run`，确认解析、分块、六维审查结构和评分口径；正式运行再接入 DeepSeek 或 DashScope/Qwen。
+- 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `CONTRACT_REVIEW_MODEL`、`CONTRACT_REVIEW_BASE_URL`。
+- 关联任务: T-028、T-032
+- 备注: 第一版支持 DOCX、文本型 PDF、TXT、MD；扫描 PDF OCR、外部法律知识库检索、红线批注和合同全文改写暂不包含。报告必须声明不替代执业律师正式法律意见。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“合同文件”区块读取服务端路径或文件链接。
+
 ### langchain-knowledge-base
 
 - 状态: Ready
