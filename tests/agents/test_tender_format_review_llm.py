@@ -5,10 +5,12 @@ import json
 from fastapi.testclient import TestClient
 
 from src.agents.tender_format_review.openai_compatible_api import (
+    ChatCompletionRequest,
     MODEL_ID,
     _extract_docx_inputs,
     _remote_docx_request,
     app,
+    parse_review_request,
 )
 
 
@@ -117,6 +119,43 @@ def test_extract_docx_inputs_accepts_fastgpt_json_array() -> None:
     assert len(paths) == 1
     assert paths[0].startswith("http://10.71.2.94:9000/fastgpt-private")
     assert paths[0].endswith("&x-id=GetObject")
+
+
+def test_extract_docx_inputs_accepts_attachment_block() -> None:
+    text = """
+附件：
+- 待审招标文件.docx: http://minio.example/tender.docx?X-Amz-Signature=aaa
+
+输出要求：请输出报告。
+"""
+
+    paths = _extract_docx_inputs(text)
+
+    assert paths == ["http://minio.example/tender.docx?X-Amz-Signature=aaa"]
+
+
+def test_parse_review_request_accepts_file_url_content_part() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "请审查这份招标文件。"},
+                    {
+                        "type": "file_url",
+                        "file_url": {"url": "http://minio.example/tender.docx"},
+                    },
+                ],
+            }
+        ],
+    )
+
+    parsed = parse_review_request(request)
+
+    assert parsed is not None
+    assert parsed.docx_input == "http://minio.example/tender.docx"
 
 
 def test_remote_docx_request_maps_current_fastgpt_minio_transport() -> None:

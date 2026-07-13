@@ -5,7 +5,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from src.agents.official_document_review.openai_compatible_api import MODEL_ID, app
+from src.agents.official_document_review.openai_compatible_api import (
+    ChatCompletionRequest,
+    MODEL_ID,
+    app,
+    parse_document_request,
+)
 
 
 def _write_document(path: Path, text: str) -> Path:
@@ -89,3 +94,52 @@ def test_chat_completions_stream_can_disable_thinking(tmp_path: Path) -> None:
     assert "已接收 1 份公文" in text
     assert "reasoning_content" not in text
     assert '"content"' in text
+
+
+def test_parse_document_request_accepts_attachment_block() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "公文类型：通知\n\n"
+                    "附件：\n"
+                    "- 通知.docx: http://minio.example/notice.docx\n"
+                    "输出要求：请输出公文格式检查报告。"
+                ),
+            }
+        ],
+    )
+
+    parsed = parse_document_request(request)
+
+    assert parsed is not None
+    assert parsed.document_path == "http://minio.example/notice.docx"
+    assert parsed.document_type == "通知"
+
+
+def test_parse_document_request_accepts_file_url_content_part() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "公文类型：函"},
+                    {
+                        "type": "file_url",
+                        "file_url": {"url": "http://minio.example/letter.pdf"},
+                    },
+                ],
+            }
+        ],
+    )
+
+    parsed = parse_document_request(request)
+
+    assert parsed is not None
+    assert parsed.document_path == "http://minio.example/letter.pdf"
+    assert parsed.document_type == "函"

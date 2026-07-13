@@ -5,7 +5,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from src.agents.contract_review.openai_compatible_api import MODEL_ID, app
+from src.agents.contract_review.openai_compatible_api import (
+    ChatCompletionRequest,
+    MODEL_ID,
+    app,
+    parse_contract_request,
+)
 
 
 def _write_contract(path: Path, text: str) -> Path:
@@ -92,3 +97,52 @@ def test_chat_completions_stream_can_disable_thinking(tmp_path: Path) -> None:
     assert "reasoning_content" not in text
     assert '"content"' in text
 
+
+def test_parse_contract_request_accepts_attachment_block() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "委托方角色：甲方\n"
+                    "交易背景：采购平台开发服务\n\n"
+                    "附件：\n"
+                    "- 服务合同.docx: http://minio.example/service-contract.docx\n"
+                    "输出要求：请输出合同审查报告。"
+                ),
+            }
+        ],
+    )
+
+    parsed = parse_contract_request(request)
+
+    assert parsed is not None
+    assert parsed.contract_path == "http://minio.example/service-contract.docx"
+    assert parsed.transaction_background == "采购平台开发服务"
+
+
+def test_parse_contract_request_accepts_file_url_content_part() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "合同类型：技术服务合同"},
+                    {
+                        "type": "file_url",
+                        "file_url": {"url": "http://minio.example/service-contract.pdf"},
+                    },
+                ],
+            }
+        ],
+    )
+
+    parsed = parse_contract_request(request)
+
+    assert parsed is not None
+    assert parsed.contract_path == "http://minio.example/service-contract.pdf"
+    assert parsed.contract_type == "技术服务合同"

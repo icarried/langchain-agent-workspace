@@ -54,6 +54,27 @@ python -m src.agents.contract_review.mcp_server --transport http --host 127.0.0.
 
 Tool 名称为 `review_contract`，接收 `contract_base64`、`contract_filename`、`client_role`、`contract_type`、`transaction_background` 和 `dry_run`。
 
+## OpenAI-compatible LLM
+
+```powershell
+uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --port 8014
+```
+
+模型 ID 为 `contract-review-agent`。提示词仍推荐使用 `合同文件：` 区块；也兼容平台自动生成的 `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url` / `image_url.url`。
+
+```text
+委托方角色：甲方
+合同类型：技术服务合同
+交易背景：甲方采购设备运行数据分析平台开发服务
+
+附件：
+- 服务合同.docx: http://minio.example/service-contract.docx?X-Amz-Signature=...
+
+输出要求：请输出合同审查报告。
+```
+
+URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 URL，不要使用服务进程无法访问的 `localhost`。
+
 ## 环境变量
 
 - `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`
@@ -63,4 +84,3 @@ Tool 名称为 `review_contract`，接收 `contract_base64`、`contract_filename
 ## 边界
 
 第一版不处理扫描 PDF OCR、外部法律知识库检索、自动红线批注和合同全文改写。本报告为辅助审查，不替代执业律师正式法律意见。
-

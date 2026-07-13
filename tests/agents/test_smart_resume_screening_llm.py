@@ -6,9 +6,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.agents.smart_resume_screening.openai_compatible_api import (
+    ChatCompletionRequest,
     MODEL_ID,
     _extract_resume_paths,
     app,
+    parse_screening_request,
 )
 
 
@@ -120,3 +122,72 @@ def test_extract_resume_paths_accepts_fastgpt_json_array() -> None:
     assert len(paths) == 2
     assert paths[0].endswith("X-Amz-Signature=aaa")
     assert paths[1].endswith("X-Amz-Signature=bbb")
+
+
+def test_extract_resume_paths_accepts_attachment_block() -> None:
+    text = """
+岗位要求：本科，Python
+附件：
+- 候选人A.pdf: http://minio.example/candidate-a.pdf?X-Amz-Signature=aaa
+- 候选人B.docx：http://minio.example/candidate-b.docx?X-Amz-Signature=bbb
+输出要求：请输出报告。
+"""
+
+    paths = _extract_resume_paths(text)
+
+    assert paths == [
+        "http://minio.example/candidate-a.pdf?X-Amz-Signature=aaa",
+        "http://minio.example/candidate-b.docx?X-Amz-Signature=bbb",
+    ]
+
+
+def test_parse_screening_request_accepts_file_url_content_part() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "岗位要求：本科，Python"},
+                    {
+                        "type": "file_url",
+                        "file_url": {"url": "http://minio.example/candidate-a.pdf"},
+                    },
+                ],
+            }
+        ],
+    )
+
+    parsed = parse_screening_request(request)
+
+    assert parsed is not None
+    assert parsed.resume_paths == ["http://minio.example/candidate-a.pdf"]
+    assert parsed.job_description_text == "本科，Python"
+
+
+def test_parse_screening_request_uses_markdown_before_attachments_as_job_description() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "# AI 应用开发工程师\n\n"
+                    "## 硬性条件\n"
+                    "本科，计算机相关专业，熟悉 Python。\n\n"
+                    "附件：\n"
+                    "- 候选人A.pdf: http://minio.example/candidate-a.pdf\n"
+                ),
+            }
+        ],
+    )
+
+    parsed = parse_screening_request(request)
+
+    assert parsed is not None
+    assert parsed.resume_paths == ["http://minio.example/candidate-a.pdf"]
+    assert parsed.job_description_text.startswith("# AI 应用开发工程师")
+    assert "## 硬性条件" in parsed.job_description_text
+    assert "附件" not in parsed.job_description_text

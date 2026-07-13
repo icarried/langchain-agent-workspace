@@ -24,7 +24,7 @@
 - 调试方式: 先用内置 `src/agents/smart_resume_screening/examples/` 执行 `--dry-run`，确认条件解析、候选人状态和排行榜；正式运行再接入 DeepSeek 或 DashScope/Qwen 整理报告。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `SMART_RESUME_SCREENING_MODEL`、`SMART_RESUME_SCREENING_BASE_URL`。
 - 关联任务: T-030、T-031
-- 备注: 本智能体定位为轻量结构化初筛配置器；复杂 OCR、远程 URL、高校参照、规则调整和独立打包仍优先使用 `batch-resume-review`。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“岗位要求”和“简历文件”区块读取服务端路径或文件链接。
+- 备注: 本智能体定位为轻量结构化初筛配置器；复杂 OCR、远程 URL、高校参照、规则调整和独立打包仍优先使用 `batch-resume-review`。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“岗位要求”“简历文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或文件链接。
 
 ### official-document-review
 
@@ -38,7 +38,7 @@
 - 调试方式: 先用内置 `src/agents/official_document_review/examples/示例通知.md` 执行 `--dry-run`，确认文件解析、确定性检查和报告结构；正式运行再接入 DeepSeek 或 DashScope/Qwen 美化报告。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `OFFICIAL_DOCUMENT_REVIEW_MODEL`、`OFFICIAL_DOCUMENT_REVIEW_BASE_URL`。
 - 关联任务: T-029、T-032
-- 备注: 第一版不接入 FastGPT 原工作流中的内网 `detect` 服务，不处理扫描 PDF OCR，也不生成带批注的 Word 修订稿；报告不替代单位公文审核流程。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“公文文件”区块读取服务端路径或文件链接。
+- 备注: 第一版不接入 FastGPT 原工作流中的内网 `detect` 服务，不处理扫描 PDF OCR，也不生成带批注的 Word 修订稿；报告不替代单位公文审核流程。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“公文文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或文件链接。
 
 ### contract-review
 
@@ -52,16 +52,16 @@
 - 调试方式: 先用内置 `src/agents/contract_review/examples/示例服务合同.md` 执行 `--dry-run`，确认解析、分块、六维审查结构和评分口径；正式运行再接入 DeepSeek 或 DashScope/Qwen。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `CONTRACT_REVIEW_MODEL`、`CONTRACT_REVIEW_BASE_URL`。
 - 关联任务: T-028、T-032
-- 备注: 第一版支持 DOCX、文本型 PDF、TXT、MD；扫描 PDF OCR、外部法律知识库检索、红线批注和合同全文改写暂不包含。报告必须声明不替代执业律师正式法律意见。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“合同文件”区块读取服务端路径或文件链接。
+- 备注: 第一版支持 DOCX、文本型 PDF、TXT、MD；扫描 PDF OCR、外部法律知识库检索、红线批注和合同全文改写暂不包含。报告必须声明不替代执业律师正式法律意见。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“合同文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或文件链接。
 
 ### langchain-knowledge-base
 
 - 状态: Ready
 - 用途: Code-first 本地知识库 RAG 智能体，支持本地 PDF、DOCX、Markdown、TXT 文档入库、检索问答、来源引用、无依据拒答、基础 eval，以及 Langflow 演示 UI。
 - 源码路径: `src/agents/langchain_knowledge_base/`
-- 子项目定位: 保持可分离的独立智能体项目；运行、测试、打包和 Docker Compose 均以 `src/agents/langchain_knowledge_base/` 为工作目录，不从工作区根目录导入运行。
-- API 入口: 在智能体目录下运行 `uvicorn kb_api.main:app --host 0.0.0.0 --port 8008`，接口包含 `GET /health`、`POST /ingest`、`POST /v1/retrieval`、`GET /v1/models`、`POST /v1/chat/completions`，模型 ID `langchain-knowledge-base-agent`。
-- Docker 入口: 在智能体目录下运行 `docker compose up --build`；默认启动 `kb-api` 和 `langflow`，不启动独立 Chroma 服务。
+- 工作区定位: 与其他智能体共同由根 Git 仓库追踪；API、测试和 Docker Compose 命令从工作区根目录执行。
+- API 入口: 在根目录运行 `uvicorn kb_api.main:app --app-dir src/agents/langchain_knowledge_base --host 0.0.0.0 --port 8008`，接口包含 `GET /health`、`POST /ingest`、`POST /v1/retrieval`、`GET /v1/models`、`POST /v1/chat/completions`，模型 ID `langchain-knowledge-base-agent`。
+- Docker 入口: 在 WSL Ubuntu 的工作区根目录运行 `docker compose -f src/agents/langchain_knowledge_base/docker-compose.yml up --build`；默认启动 `kb-api` 和 `langflow`，不启动独立 Chroma 服务。
 - 调试方式: 先复制 `src/agents/langchain_knowledge_base/.env.example` 为同目录 `.env`，把文档放入 `data/docs/`、`data/docs/primary/` 或 `data/docs/secondary/`，启动 API 后手动调用 `/ingest`，再调用 `/v1/retrieval` 或 `/v1/chat/completions`。
 - 向量存储: 使用 Chroma `PersistentClient` 本地持久化；非 Docker 默认目录为 `data/chroma/`，Compose 内为 `/app/data/chroma`，通过命名卷 `kb_chroma_data` 保存。`docker compose down` 不删除向量库，只有 `docker compose down -v` 会重置 Compose 持久化数据。
 - 需要的环境变量: `KB_OPENAI_API_KEY`；可选 `KB_OPENAI_BASE_URL`、`KB_CHAT_MODEL`、`KB_EMBEDDING_API_KEY`、`KB_EMBEDDING_BASE_URL`、`KB_EMBEDDING_MODEL`、`KB_DOCS_DIR`、`KB_CHROMA_PERSIST_DIR`、`KB_CHROMA_COLLECTION`、`KB_TOP_K`、`KB_MIN_RELEVANCE_SCORE`，以及 primary/secondary 知识库名称、目录、collection 和 keywords 配置。
@@ -94,7 +94,7 @@
 - 调试方式: 先用 `/v1/chat/completions` 的 `dry_run=true` 验证 Dify/FastGPT 模型接入和流式输出，再接入正式模型。
 - 需要的环境变量: 同 `batch-resume-review`。
 - 关联任务: T-024
-- 备注: 本智能体与原 `batch-resume-review` 沿用相同端口，二者不要同时启动；复制隔离用于避免影响原生产可用入口。
+- 备注: 本智能体与原 `batch-resume-review` 沿用相同端口，二者不要同时启动；复制隔离用于避免影响原生产可用入口。OpenAI-compatible 入口可从“简历文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` / `image_url.url` 读取文件链接。
 
 ### resume-review
 
@@ -121,7 +121,7 @@
 - 调试方式: 先运行 `--dry-run` 验证 docx 解析、分块和输出路径，再接入 DeepSeek 或 DashScope/Qwen 模型。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `TENDER_REVIEW_MODEL`、`TENDER_REVIEW_BASE_URL`、`TENDER_REVIEW_MAX_REMOTE_FILE_BYTES`、`TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS`。
 - 关联任务: T-009、T-011、T-012、T-026
-- 备注: 对 10 万字以上文件默认采用“解析元素 -> 章节/长度分块 -> 分块审查 -> 汇总复核”，不依赖整篇一次放入上下文。OpenAI-compatible 入口用于 Dify/FastGPT LLM 节点流式输出，可从 prompt 的“招标文件”区块读取服务端路径或 HTTP(S) `.docx` 链接。Codex 后台起常驻 HTTP MCP 时，优先直接调用 `C:\Users\Lenovo\.conda\envs\langchain\python.exe`，不要依赖 `conda run`；详见 `docs/development/RUN_AND_DEBUG.md` 和 `docs/operations/PROBLEM_LOG.md` 的 2026-06-17 记录。
+- 备注: 对 10 万字以上文件默认采用“解析元素 -> 章节/长度分块 -> 分块审查 -> 汇总复核”，不依赖整篇一次放入上下文。OpenAI-compatible 入口用于 Dify/FastGPT LLM 节点流式输出，可从 prompt 的“招标文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或 HTTP(S) `.docx` 链接。Codex 后台起常驻 HTTP MCP 时，优先直接调用 `C:\Users\Lenovo\.conda\envs\langchain\python.exe`，不要依赖 `conda run`；详见 `docs/development/RUN_AND_DEBUG.md` 和 `docs/operations/PROBLEM_LOG.md` 的 2026-06-17 记录。
 
 ## 模板
 

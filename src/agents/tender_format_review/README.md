@@ -95,6 +95,17 @@ http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
 
 也可以把 `招标文件` 写成服务端本地路径，例如 `./临时文件/仅包含一行文字的文件.docx`。FastGPT 文件变量如果渲染为 JSON 数组，服务会读取数组中的第一个 `.docx`；查询字符串会原样保留以避免破坏预签名 URL。
 
+平台如果把模型对话上传的文件渲染成 `附件：` 列表，也可以直接传入：
+
+```text
+附件：
+- 待审招标文件.docx: http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
+
+输出要求：请输出招标文件格式审查报告。
+```
+
+OpenAI content parts 中的 `file_url.url` 和 `image_url.url` 也会被识别为文件输入。URL 必须能被智能体服务所在环境访问；如果是 MinIO 预签名 URL，不要使用该服务进程、容器或 WSL 命名空间无法访问的 `localhost`。
+
 ### 临时 MinIO 映射
 
 当前本机 FastGPT/MinIO 部署存在临时网络映射问题：FastGPT 传给智能体的预签名 URL 使用 `10.71.2.94:9000`，但该 MinIO 实例在 Windows 上实际通过 `127.0.0.1:9002` 访问。因此 `openai_compatible_api.py::_temporary_minio_transport_mapping` 内置了临时映射：

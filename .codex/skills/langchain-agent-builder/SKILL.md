@@ -84,6 +84,8 @@ Minimum wrapper behavior:
 - Return 200 readiness text for generic model-test prompts that do not include business inputs.
 - Parse labeled prompt sections such as `岗位要求：` and `简历文件：`.
 - Support file links rendered as newline URLs and FastGPT `array<string>` JSON arrays.
+- Support platform `附件：` blocks and OpenAI content parts such as `file_url.url` / `image_url.url`.
+- For resume-style agents, if file inputs are present but no explicit `岗位要求` / `JD` section exists, use the text before the file section as a fallback job description.
 - Stream SSE `chat.completion.chunk` events and end with `data: [DONE]`.
 
 Document the platform prompt template, Base URL, model id, port conflict rules, and container/Windows networking path. Validate from inside the same Docker/WSL namespace as the platform, not only from Windows.

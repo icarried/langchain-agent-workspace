@@ -41,6 +41,22 @@ http://minio.example/bucket/candidate-b.docx?X-Amz-Signature=...
 
 `简历文件：` 后可以放服务端本地路径或 HTTP(S) 预签名 URL。FastGPT/MinIO 的端口映射兼容环境变量与原智能体一致。
 
+平台如果在模型对话上传文件后自动生成 `附件：` 列表，也可以直接传入：
+
+```text
+岗位要求：要求本科及以上学历，熟悉 Python。
+
+附件：
+- 候选人A.pdf: http://minio.example/bucket/candidate-a.pdf?X-Amz-Signature=...
+- 候选人B.docx: http://minio.example/bucket/candidate-b.docx?X-Amz-Signature=...
+
+输出要求：请输出批量简历审查与排序报告。
+```
+
+OpenAI content parts 中的 `file_url.url` 和 `image_url.url` 也会被识别为简历文件输入。URL 必须能被智能体服务所在环境访问；如果是 MinIO 预签名 URL，不要使用该服务进程、容器或 WSL 命名空间无法访问的 `localhost`。
+
+推荐显式写 `岗位要求：`，但平台只把用户正文原样放在 `附件：` 前面时也可以工作：只要已识别到简历文件，且没有显式 `岗位要求：` / `JD：` 区块，服务会把 `附件：`、`简历文件：` 或 `输出要求：` 之前的正文当作岗位要求。Markdown 标题和列表会原样保留。
+
 ## Chat Completions
 
 非流式请求：

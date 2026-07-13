@@ -69,10 +69,10 @@ src/config/settings.py   # 环境变量和模型配置
 
 ## 知识库智能体
 
-`langchain_knowledge_base` 是外部导入并保留可分离交付的独立子项目。所有命令都应先进入智能体目录运行，不从工作区根目录启动：
+`langchain_knowledge_base` 是外部导入、现已纳入本工作区统一 Git 追踪的智能体。所有本地命令从工作区根目录执行：
 
 ```powershell
-cd E:\My_sorcode\--创建智能体工作空间--\src\agents\langchain_knowledge_base
+cd E:\My_sorcode\--创建智能体工作空间--
 ```
 
 复制环境模板并在同目录 `.env` 填写本地真实配置：
@@ -105,7 +105,7 @@ KB_EMBEDDING_MODEL=text-embedding-v4
 本地启动 API：
 
 ```powershell
-uvicorn kb_api.main:app --host 0.0.0.0 --port 8008
+uvicorn kb_api.main:app --app-dir src/agents/langchain_knowledge_base --host 0.0.0.0 --port 8008
 ```
 
 健康检查：
@@ -281,7 +281,7 @@ http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
 输出要求：请输出招标文件格式审查报告。
 ```
 
-`招标文件` 也可以是服务端本地 `.docx` 路径。FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的第一个文件链接。远程 `.docx` 会临时下载后交给原 `review_tender_format` 服务层；可用 `TENDER_REVIEW_MAX_REMOTE_FILE_BYTES` 和 `TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS` 调整大小上限和超时。
+`招标文件` 也可以是服务端本地 `.docx` 路径。FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的第一个文件链接；平台自动生成的 `附件：` 列表和 OpenAI content parts 中的 `file_url.url` / `image_url.url` 也会被识别。远程 `.docx` 会临时下载后交给原 `review_tender_format` 服务层；可用 `TENDER_REVIEW_MAX_REMOTE_FILE_BYTES` 和 `TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS` 调整大小上限和超时。URL 必须能被智能体服务所在环境访问，MinIO 预签名 URL 不要使用该服务进程无法访问的 `localhost`。
 
 当前存在一处临时 MinIO 传输映射：FastGPT 生成的预签名 URL 为 `10.71.2.94:9000`，但 Windows 侧实际访问该实例需要走 `127.0.0.1:9002`。`src.agents.tender_format_review.openai_compatible_api` 会在读取远程 `.docx` 时把实际连接地址映射为 `127.0.0.1:9002`，同时保留原始 `Host: 10.71.2.94:9000` 和完整查询签名。该逻辑只用于这个具体地址，是临时兼容层；修好 FastGPT/MinIO 外部签名地址后应删除。
 
@@ -555,6 +555,8 @@ src/agents/contract_review/examples/示例服务合同.md
 输出要求：请输出合同审查报告。
 ```
 
+也兼容平台自动生成的 `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url` / `image_url.url`。URL 必须能被智能体服务所在环境访问，MinIO 预签名 URL 不要使用该服务进程无法访问的 `localhost`。
+
 ## 公文格式检查智能体
 
 `official-document-review` 来自 FastGPT 导出工作流“公文优化”的经验转化，重点保留“文件检测 -> 检测结果整理输出”的分层。第一版使用本地确定性检查，不依赖原工作流中的内网 HTTP 检测地址。
@@ -638,6 +640,8 @@ src/agents/official_document_review/examples/示例通知.md
 
 输出要求：请输出公文格式检查报告。
 ```
+
+也兼容平台自动生成的 `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url` / `image_url.url`。URL 必须能被智能体服务所在环境访问，MinIO 预签名 URL 不要使用该服务进程无法访问的 `localhost`。
 
 ## 智能简历结构化初筛智能体
 
@@ -747,7 +751,9 @@ src/agents/smart_resume_screening/examples/候选人B_缺硬性.md
 输出要求：请输出智能简历筛选排行榜。
 ```
 
-FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的文件链接或服务端路径。当前轻量初筛入口复用 `screen_resumes`，适合服务端本地路径；需要远程 MinIO URL、OCR 或多格式复杂解析时优先使用 `batch-resume-review-llm`。
+FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的文件链接或服务端路径；平台自动生成的 `附件：` 列表和 OpenAI content parts 中的 `file_url.url` / `image_url.url` 也会被识别。URL 必须能被智能体服务所在环境访问，MinIO 预签名 URL 不要使用该服务进程无法访问的 `localhost`。当前轻量初筛入口复用 `screen_resumes`，适合服务端本地路径；需要远程 MinIO URL、OCR 或多格式复杂解析时优先使用 `batch-resume-review-llm`。
+
+推荐显式写 `岗位要求：`。如果平台只把用户正文原样放在 `附件：` 前面，`smart-resume-screening` 会在已识别到简历文件且没有显式 `岗位要求：` / `JD：` 时，把 `附件：`、`简历文件：` 或 `输出要求：` 之前的正文作为岗位要求。
 
 ## 批量简历审查与排序智能体
 
@@ -835,6 +841,10 @@ http://minio.example/bucket/candidate-b.docx?X-Amz-Signature=...
 
 输出要求：请输出批量简历审查与排序报告。
 ```
+
+也兼容平台自动生成的 `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url` / `image_url.url`。URL 必须能被智能体服务所在环境访问，MinIO 预签名 URL 不要使用该服务进程无法访问的 `localhost`。
+
+推荐显式写 `岗位要求：`。如果平台只把用户正文原样放在 `附件：` 前面，`batch-resume-review-llm` 会在已识别到简历文件且没有显式 `岗位要求：` / `JD：` 时，把 `附件：`、`简历文件：` 或 `输出要求：` 之前的正文作为岗位要求。
 
 本地 dry-run 验证：
 

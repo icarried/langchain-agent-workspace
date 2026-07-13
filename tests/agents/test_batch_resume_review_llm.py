@@ -6,9 +6,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from src.agents.batch_resume_review_llm.openai_compatible_api import (
+    ChatCompletionRequest,
     MODEL_ID,
     _extract_resume_paths,
     app,
+    parse_review_request,
 )
 
 
@@ -131,6 +133,157 @@ def test_extract_resume_paths_accepts_fastgpt_json_array() -> None:
     assert paths[0].startswith("http://10.71.2.94:9000/fastgpt-private")
     assert paths[0].endswith("&x-id=GetObject")
     assert "X-Amz-Signature=bbb" in paths[1]
+
+
+def test_extract_resume_paths_accepts_attachment_block_named_urls() -> None:
+    text = """
+岗位要求：要求本科，熟悉 Python。
+
+附件：
+- 候选人A.pdf: http://minio.example/candidate-a.pdf?X-Amz-Signature=aaa
+- 候选人B.docx：http://minio.example/candidate-b.docx?X-Amz-Signature=bbb
+
+输出要求：请输出报告。
+"""
+
+    paths = _extract_resume_paths(text)
+
+    assert paths == [
+        "http://minio.example/candidate-a.pdf?X-Amz-Signature=aaa",
+        "http://minio.example/candidate-b.docx?X-Amz-Signature=bbb",
+    ]
+
+
+def test_parse_review_request_accepts_file_url_content_part() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "岗位要求：要求本科，熟悉 Python。"},
+                    {
+                        "type": "file_url",
+                        "file_url": {
+                            "url": "http://minio.example/candidate-a.pdf",
+                            "filename": "候选人A.pdf",
+                        },
+                    },
+                ],
+            }
+        ],
+    )
+
+    parsed = parse_review_request(request)
+
+    assert parsed is not None
+    assert parsed.resume_paths == ["http://minio.example/candidate-a.pdf"]
+    assert parsed.job_description_text == "要求本科，熟悉 Python。"
+
+
+def test_parse_review_request_accepts_image_url_content_part() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "岗位要求：要求本科。"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "http://minio.example/candidate-a.png"},
+                    },
+                ],
+            }
+        ],
+    )
+
+    parsed = parse_review_request(request)
+
+    assert parsed is not None
+    assert parsed.resume_paths == ["http://minio.example/candidate-a.png"]
+
+
+def test_parse_review_request_returns_readiness_when_job_or_files_missing() -> None:
+    only_job = ChatCompletionRequest(
+        model=MODEL_ID,
+        messages=[{"role": "user", "content": "岗位要求：要求本科。"}],
+    )
+    only_file = ChatCompletionRequest(
+        model=MODEL_ID,
+        messages=[
+            {
+                "role": "user",
+                "content": "附件：\n- 候选人A.pdf: http://minio.example/candidate-a.pdf",
+            }
+        ],
+    )
+
+    assert parse_review_request(only_job) is None
+    assert parse_review_request(only_file) is None
+
+
+def test_parse_review_request_uses_markdown_before_attachments_as_job_description() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "# 人工智能开发工程师岗位要求（测试夹具）\n\n"
+                    "## 专业\n"
+                    "计算机、人工智能相关专业。\n\n"
+                    "## 技能\n"
+                    "熟悉 Python 和 LangChain。\n\n"
+                    "附件：\n"
+                    "- 候选示例1.md: http://localhost:9000/candidate-a.md?X-Amz-Signature=aaa\n"
+                    "- 候选示例2.md: http://localhost:9000/candidate-b.md?X-Amz-Signature=bbb\n"
+                ),
+            }
+        ],
+    )
+
+    parsed = parse_review_request(request)
+
+    assert parsed is not None
+    assert parsed.resume_paths == [
+        "http://localhost:9000/candidate-a.md?X-Amz-Signature=aaa",
+        "http://localhost:9000/candidate-b.md?X-Amz-Signature=bbb",
+    ]
+    assert parsed.job_description_text.startswith("# 人工智能开发工程师岗位要求")
+    assert "## 专业" in parsed.job_description_text
+    assert "附件" not in parsed.job_description_text
+
+
+def test_parse_review_request_uses_message_text_as_job_description_for_file_part() -> None:
+    request = ChatCompletionRequest(
+        model=MODEL_ID,
+        dry_run=True,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "# 人工智能开发工程师岗位要求\n\n熟悉 Python。",
+                    },
+                    {
+                        "type": "file_url",
+                        "file_url": {"url": "http://localhost:9000/candidate-a.md"},
+                    },
+                ],
+            }
+        ],
+    )
+
+    parsed = parse_review_request(request)
+
+    assert parsed is not None
+    assert parsed.resume_paths == ["http://localhost:9000/candidate-a.md"]
+    assert parsed.job_description_text == "# 人工智能开发工程师岗位要求\n\n熟悉 Python。"
 
 
 def test_chat_completions_stream_dry_run(tmp_path: Path) -> None:

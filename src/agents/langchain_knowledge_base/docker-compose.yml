@@ -1,0 +1,30 @@
+services:
+  kb-api:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      KB_DOCS_DIR: /app/data/docs
+      KB_CHROMA_PERSIST_DIR: /app/data/chroma
+    ports:
+      - "8008:8008"
+    volumes:
+      - ./data/docs:/app/data/docs
+      - kb_chroma_data:/app/data/chroma
+
+  langflow:
+    image: langflowai/langflow:latest
+    ports:
+      - "7860:7860"
+    environment:
+      LANGFLOW_HOST: 0.0.0.0
+      LANGFLOW_PORT: "7860"
+    volumes:
+      - ./langflow/flows:/app/flows
+    depends_on:
+      - kb-api
+
+volumes:
+  kb_chroma_data:
+

@@ -52,6 +52,25 @@ python -m src.agents.official_document_review.mcp_server --transport http --host
 
 Tool 名称为 `review_official_document`，接收 `document_base64`、`document_filename`、`document_type` 和 `dry_run`。
 
+## OpenAI-compatible LLM
+
+```powershell
+uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0.0.0 --port 8013
+```
+
+模型 ID 为 `official-document-review-agent`。提示词仍推荐使用 `公文文件：` 区块；也兼容平台自动生成的 `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url` / `image_url.url`。
+
+```text
+公文类型：通知
+
+附件：
+- 通知.docx: http://minio.example/notice.docx?X-Amz-Signature=...
+
+输出要求：请输出公文格式检查报告。
+```
+
+URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 URL，不要使用服务进程无法访问的 `localhost`。
+
 ## 环境变量
 
 - `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`
@@ -61,4 +80,3 @@ Tool 名称为 `review_official_document`，接收 `document_base64`、`document
 ## 边界
 
 第一版不接入 FastGPT 原工作流中的内网检测服务，不处理扫描 PDF OCR，也不生成带批注的 Word 修订稿。本报告为格式辅助检查，不替代单位公文审核流程。
-

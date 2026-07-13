@@ -73,15 +73,29 @@ http://.../candidate-b.docx
 
 FastGPT commonly exposes file links as `array<string>` and may render them as a JSON array. Parse the section block as JSON first when it starts with `[`, then fall back to extracting URLs or one-path-per-line values. Preserve query strings exactly; MinIO/S3 signatures break if the URL is decoded, truncated, or reserialized incorrectly. Sanitize signed URLs before putting them in reports or logs.
 
+Also accept platform-generated attachment text blocks when users upload files through a model chat UI:
+
+```text
+附件：
+- candidate-a.pdf: http://.../candidate-a.pdf?X-Amz-Signature=...
+- candidate-b.docx: http://.../candidate-b.docx?X-Amz-Signature=...
+```
+
+When `messages[].content` is a list of OpenAI-style content parts, extract file URLs from `{"type":"file_url","file_url":{"url":"..."}}`, `{"type":"image_url","image_url":{"url":"..."}}`, and a top-level `{"url":"..."}` part when present. Merge those URLs with prompt-extracted paths and de-duplicate them without rewriting query strings.
+
+For resume-style agents that need both job requirements and uploaded files, keep explicit `岗位要求` / `JD` sections as the preferred protocol. If file inputs are already present but no explicit job section is found, use the text before the first file section label (`简历文件`, `简历路径`, `附件`) or `输出要求` as a fallback job description. Preserve Markdown in that fallback text.
+
 ## Implementation Pattern
 
 1. Define Pydantic request models with `extra="allow"` so Dify/FastGPT-specific fields do not fail validation.
 2. Flatten `messages[].content` from strings and common list parts such as `{"type":"text","text":"..."}`.
-3. Extract labeled sections such as `岗位要求` and `简历文件`.
-4. If both sections are absent, return a readiness completion.
-5. If sections are present, build the original agent request and call the existing service function.
-6. For streaming, emit an immediate assistant chunk, progress text, periodic heartbeat text for long tasks, the final report, a stop chunk, and `[DONE]`.
-7. Surface business errors as assistant text in streaming mode when the caller is an LLM node; platform model calls often display HTTP errors poorly.
+3. Extract labeled sections such as `岗位要求`, `简历文件`, and generic `附件`.
+4. Extract `file_url.url` and `image_url.url` from content parts and merge them into the file input list.
+5. For resume-style prompts, if file inputs exist but the job section is absent, treat the user text before the file section as the job description.
+6. If required business inputs are absent, return a readiness completion.
+7. If sections are present, build the original agent request and call the existing service function.
+8. For streaming, emit an immediate assistant chunk, progress text, periodic heartbeat text for long tasks, the final report, a stop chunk, and `[DONE]`.
+9. Surface business errors as assistant text in streaming mode when the caller is an LLM node; platform model calls often display HTTP errors poorly.
 
 When the platform supports think/reasoning displays, send non-final progress to `delta.reasoning_content` and the final answer/report to `delta.content`. Keep this to execution status and evidence-free process summaries; do not expose hidden chain-of-thought. Provide a request flag such as `thinking=false` to fall back to ordinary `content` progress for platforms that ignore reasoning fields.
 

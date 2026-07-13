@@ -9,6 +9,56 @@
 
 ## 当前任务
 
+### T-035 将知识库智能体纳入工作区统一 Git 追踪
+
+- 状态: Done
+- 目标: 为整体多智能体工作区创建 GitHub 仓库做好准备，使 `langchain_knowledge_base` 与其他智能体由同一个根 Git 仓库追踪。
+- 验收标准:
+  - 已移除 `src/agents/langchain_knowledge_base/.git` 嵌套仓库元数据，知识库源代码可由根仓库识别和提交。
+  - 本地密钥、Chroma 数据和测试/静态检查缓存仍被忽略，不会进入提交。
+  - README、运行手册、智能体登记表、密钥说明和决策记录不再将知识库描述为独立 Git 子项目。
+  - 知识库 API、测试、eval 和 Docker Compose 命令均从工作区根目录执行。
+- 验证: 根目录 `git status --short` 显示 `src/agents/langchain_knowledge_base/` 为普通待追踪目录；`git -C src/agents/langchain_knowledge_base rev-parse --show-toplevel` 指向工作区根目录；根目录启动使用 `uvicorn kb_api.main:app --app-dir src/agents/langchain_knowledge_base`。
+- 最后更新: 2026-07-13
+
+### T-034 放宽简历类 OpenAI-compatible JD 解析
+
+- 状态: Done
+- 目标: 按 handoff 先修 `batch-resume-review-llm`，再检查其它类似简历类 OpenAI-compatible 入口，避免“Markdown 岗位要求正文 + 附件 URL”因缺少显式 `岗位要求：` 标签而返回 readiness。
+- 验收标准:
+  - `batch_resume_review_llm` 在已识别简历文件但未识别显式 `岗位要求` / `JD` 区块时，把 `附件`、`简历文件` 或 `输出要求` 之前的正文作为岗位要求。
+  - `smart-resume-screening` 同步支持该 fallback，不丢失附件前岗位要求正文。
+  - 原显式 `岗位要求：` 协议、附件 URL、content parts 文件 URL 和缺少必要输入时 readiness 行为不回归。
+- 执行计划:
+  - 在共享 OpenAI-compatible 输入解析工具中增加“首个文件区块前正文”提取函数。
+  - 先接入 `batch_resume_review_llm` 并补平台真实形态测试。
+  - 将同类逻辑接入 `smart_resume_screening` 并补测试。
+  - 更新 README、运行手册、技能说明和决策记录。
+- 验证:
+  - `conda run -n langchain python -m pytest tests\agents\test_batch_resume_review_llm.py tests\agents\test_smart_resume_screening_llm.py -q` 通过，22 个测试通过。
+  - `conda run -n langchain python -m pytest tests\agents\test_batch_resume_review_llm.py tests\agents\test_smart_resume_screening_llm.py tests\agents\test_contract_review_llm.py tests\agents\test_official_document_review_llm.py tests\agents\test_tender_format_review_llm.py -q` 通过，46 个测试通过。
+  - `conda run -n langchain ruff check src\agents\openai_compatible_inputs.py src\agents\batch_resume_review_llm\openai_compatible_api.py src\agents\smart_resume_screening\openai_compatible_api.py src\agents\contract_review\openai_compatible_api.py src\agents\official_document_review\openai_compatible_api.py src\agents\tender_format_review\openai_compatible_api.py tests\agents\test_batch_resume_review_llm.py tests\agents\test_smart_resume_screening_llm.py tests\agents\test_contract_review_llm.py tests\agents\test_official_document_review_llm.py tests\agents\test_tender_format_review_llm.py` 通过。
+- 最后更新: 2026-07-07
+
+### T-033 增强 OpenAI-compatible 文件输入兼容性
+
+- 状态: Done
+- 目标: 按 handoff 先增强 `batch-resume-review-llm`，再让其它需上传文件的 OpenAI-compatible 智能体兼容平台 `附件：` 列表和 OpenAI content parts 文件 URL。
+- 验收标准:
+  - `batch_resume_review_llm` 保留原 `岗位要求`、`简历文件`、JSON 数组和多行 URL 解析，并新增 `附件：` 区块、`file_url.url`、`image_url.url` 支持。
+  - `smart-resume-screening`、`contract-review`、`official-document-review`、`tender-format-review` 的 OpenAI-compatible 入口也能解析 `附件：` 区块和 content parts 文件 URL。
+  - 缺少必要业务输入时仍返回 readiness，不误触发审查。
+  - 增加定向测试并同步 README、运行手册和智能体登记表。
+- 执行计划:
+  - 新增共享 OpenAI-compatible 文件输入解析工具。
+  - 先改 `batch_resume_review_llm` 并补 handoff 指定测试。
+  - 推广到其它文件上传型 LLM 入口并补解析测试。
+  - 运行定向 pytest 与 Ruff。
+- 验证:
+  - `conda run -n langchain python -m pytest tests\agents\test_batch_resume_review_llm.py tests\agents\test_smart_resume_screening_llm.py tests\agents\test_contract_review_llm.py tests\agents\test_official_document_review_llm.py tests\agents\test_tender_format_review_llm.py -q` 通过，43 个测试通过。
+  - `conda run -n langchain ruff check src\agents\openai_compatible_inputs.py src\agents\batch_resume_review_llm\openai_compatible_api.py src\agents\smart_resume_screening\openai_compatible_api.py src\agents\contract_review\openai_compatible_api.py src\agents\official_document_review\openai_compatible_api.py src\agents\tender_format_review\openai_compatible_api.py tests\agents\test_batch_resume_review_llm.py tests\agents\test_smart_resume_screening_llm.py tests\agents\test_contract_review_llm.py tests\agents\test_official_document_review_llm.py tests\agents\test_tender_format_review_llm.py` 通过。
+- 最后更新: 2026-07-07
+
 ### T-032 将合同审查与公文格式检查智能体封装为 OpenAI-compatible LLM
 
 - 状态: Done

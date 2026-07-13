@@ -39,6 +39,30 @@ python -m src.agents.smart_resume_screening.mcp_server --transport http --host 1
 
 Tool 名称为 `screen_resumes`。
 
+## OpenAI-compatible LLM
+
+```powershell
+uvicorn src.agents.smart_resume_screening.openai_compatible_api:app --host 0.0.0.0 --port 8012
+```
+
+模型 ID 为 `smart-resume-screening-agent`。提示词仍推荐使用 `岗位要求：` 和 `简历文件：` 区块；同时兼容平台自动生成的 `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url` / `image_url.url`。
+
+```text
+岗位要求：
+职位名称：AI 应用开发工程师
+硬性条件：本科，计算机，Python
+
+附件：
+- 候选人A.pdf: http://minio.example/candidate-a.pdf?X-Amz-Signature=...
+- 候选人B.docx: http://minio.example/candidate-b.docx?X-Amz-Signature=...
+
+输出要求：请输出智能简历筛选排行榜。
+```
+
+URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 URL，不要使用服务进程无法访问的 `localhost`。
+
+推荐显式写 `岗位要求：`，但平台只把用户正文原样放在 `附件：` 前面时也可以工作：只要已识别到简历文件，且没有显式 `岗位要求：` / `JD：` 区块，服务会把 `附件：`、`简历文件：` 或 `输出要求：` 之前的正文当作岗位要求。
+
 ## 环境变量
 
 - `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`
@@ -48,4 +72,3 @@ Tool 名称为 `screen_resumes`。
 ## 与现有批量简历智能体的区别
 
 `batch-resume-review` 更适合完整招聘流程、OCR、远程 URL、学历高校参照和复杂报告；本智能体更像 FastGPT 中的结构化初筛配置器，适合快速验证岗位条件、候选人排名和筛选口径。
-

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import queue
-import re
 import tempfile
 import threading
 import time
@@ -17,6 +16,17 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+
+from src.agents.openai_compatible_inputs import (
+    dedupe,
+    extract_json_array_paths,
+    extract_labeled_paths,
+    extract_paths_from_line,
+    messages_to_text_and_urls,
+    message_content_to_text_and_urls,
+    starts_section,
+    strip_section_label,
+)
 
 from .service import review_tender_format
 
@@ -108,8 +118,8 @@ def create_chat_completion(request: ChatCompletionRequest) -> Any:
 def parse_review_request(
     request: ChatCompletionRequest,
 ) -> ParsedTenderReviewRequest | None:
-    text = "\n\n".join(_message_content_to_text(message.content) for message in request.messages)
-    docx_inputs = _extract_docx_inputs(text)
+    text, content_part_urls = messages_to_text_and_urls(request.messages)
+    docx_inputs = _extract_docx_inputs(text, extra_paths=content_part_urls)
     if not docx_inputs:
         return None
     return ParsedTenderReviewRequest(
@@ -357,32 +367,16 @@ def _sse_done(
 
 
 def _message_content_to_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                if isinstance(item.get("text"), str):
-                    parts.append(item["text"])
-                elif isinstance(item.get("input_text"), str):
-                    parts.append(item["input_text"])
-        return "\n".join(parts)
-    return ""
+    return message_content_to_text_and_urls(content)[0]
 
 
-def _extract_docx_inputs(text: str) -> list[str]:
-    block = _extract_docx_block(text)
-    json_paths = _extract_json_array_paths(block)
-    if json_paths:
-        return _dedupe(json_paths)
-
-    paths: list[str] = []
-    for raw_line in block.splitlines():
-        line = raw_line.strip().strip("-* ")
-        if line:
-            paths.extend(_extract_paths_from_line(line))
-    return _dedupe(paths)
+def _extract_docx_inputs(text: str, extra_paths: list[str] | None = None) -> list[str]:
+    return extract_labeled_paths(
+        text,
+        ["招标文件", "待审文件", "文件链接", "文件路径", "附件"],
+        ["输出要求", "审查要求"],
+        extra_paths=extra_paths,
+    )
 
 
 def _extract_docx_block(text: str) -> str:
@@ -397,6 +391,7 @@ def _extract_docx_block(text: str) -> str:
             or _starts_section(line, "待审文件")
             or _starts_section(line, "文件链接")
             or _starts_section(line, "文件路径")
+            or _starts_section(line, "附件")
         ):
             collecting = True
             line = _strip_section_label(line)
@@ -408,35 +403,19 @@ def _extract_docx_block(text: str) -> str:
 
 
 def _extract_json_array_paths(block: str) -> list[str]:
-    text = block.strip()
-    if not text:
-        return []
-    start = text.find("[")
-    if start < 0:
-        return []
-    try:
-        value, _ = json.JSONDecoder().raw_decode(text[start:])
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(value, list):
-        return []
-    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    return extract_json_array_paths(block)
 
 
 def _extract_paths_from_line(line: str) -> list[str]:
-    urls = re.findall(r"https?://[^\s\"'<>，]+", line)
-    if urls:
-        return urls
-    parts = [part.strip().strip("\"'") for part in re.split(r"[,，;；]", line)]
-    return [part for part in parts if part and not part.endswith("：")]
+    return extract_paths_from_line(line)
 
 
 def _starts_section(line: str, label: str) -> bool:
-    return bool(re.match(rf"^{re.escape(label)}\s*[:：]", line, flags=re.IGNORECASE))
+    return starts_section(line, label)
 
 
 def _strip_section_label(line: str) -> str:
-    return re.sub(r"^[^:：]+[:：]\s*", "", line, count=1).strip()
+    return strip_section_label(line)
 
 
 def _is_http_url(value: str) -> bool:
@@ -445,11 +424,4 @@ def _is_http_url(value: str) -> bool:
 
 
 def _dedupe(values: list[str]) -> list[str]:
-    seen = set()
-    result = []
-    for value in values:
-        key = value.lower()
-        if key not in seen:
-            seen.add(key)
-            result.append(value)
-    return result
+    return dedupe(values)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import queue
-import re
 import threading
 import time
 import uuid
@@ -12,6 +11,19 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+
+from src.agents.openai_compatible_inputs import (
+    dedupe,
+    extract_json_array_paths,
+    extract_labeled_paths,
+    extract_paths_from_line,
+    extract_section_block,
+    extract_text_before_labeled_section,
+    messages_to_text_and_urls,
+    message_content_to_text_and_urls,
+    starts_section,
+    strip_section_label,
+)
 
 from .service import screen_resumes
 
@@ -98,9 +110,11 @@ def create_chat_completion(request: ChatCompletionRequest) -> Any:
 
 
 def parse_screening_request(request: ChatCompletionRequest) -> ParsedScreeningRequest | None:
-    text = "\n\n".join(_message_content_to_text(message.content) for message in request.messages)
-    resume_paths = _extract_resume_paths(text)
+    text, content_part_urls = messages_to_text_and_urls(request.messages)
+    resume_paths = _extract_resume_paths(text, extra_paths=content_part_urls)
     job_description = _extract_job_description(text)
+    if resume_paths and not job_description:
+        job_description = _extract_job_description_fallback(text)
     if not resume_paths and not job_description:
         return None
     if not resume_paths:
@@ -288,96 +302,52 @@ def _sse_done(completion_id: str, created: int, model: str, *, finish_reason: st
 
 
 def _message_content_to_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                if isinstance(item.get("text"), str):
-                    parts.append(item["text"])
-                elif isinstance(item.get("input_text"), str):
-                    parts.append(item["input_text"])
-        return "\n".join(parts)
-    return ""
+    return message_content_to_text_and_urls(content)[0]
 
 
-def _extract_resume_paths(text: str) -> list[str]:
-    block = _extract_section_block(text, ["简历文件", "简历路径"], ["岗位要求", "输出要求"])
-    json_paths = _extract_json_array_paths(block)
-    if json_paths:
-        return _dedupe(json_paths)
-    paths: list[str] = []
-    for raw_line in block.splitlines():
-        line = raw_line.strip().strip("-* ")
-        if line:
-            paths.extend(_extract_paths_from_line(line))
-    return _dedupe(paths)
+def _extract_resume_paths(text: str, extra_paths: list[str] | None = None) -> list[str]:
+    return extract_labeled_paths(
+        text,
+        ["简历文件", "简历路径", "附件"],
+        ["岗位要求", "JD", "职位要求", "输出要求"],
+        extra_paths=extra_paths,
+    )
 
 
 def _extract_job_description(text: str) -> str:
-    return _extract_section_block(text, ["岗位要求", "JD", "职位要求"], ["简历文件", "简历路径", "输出要求"]).strip()
+    return _extract_section_block(
+        text,
+        ["岗位要求", "JD", "职位要求"],
+        ["简历文件", "简历路径", "附件", "输出要求"],
+    ).strip()
+
+
+def _extract_job_description_fallback(text: str) -> str:
+    return extract_text_before_labeled_section(
+        text,
+        ["简历文件", "简历路径", "附件", "输出要求"],
+    )
 
 
 def _extract_section_block(text: str, start_labels: list[str], end_labels: list[str]) -> str:
-    lines: list[str] = []
-    collecting = False
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line and not collecting:
-            continue
-        if any(_starts_section(line, label) for label in start_labels):
-            collecting = True
-            line = _strip_section_label(line)
-            if line:
-                lines.append(line)
-            continue
-        if collecting and any(_starts_section(line, label) for label in end_labels):
-            break
-        if collecting:
-            lines.append(line)
-    return "\n".join(lines).strip()
+    return extract_section_block(text, start_labels, end_labels)
 
 
 def _extract_json_array_paths(block: str) -> list[str]:
-    text = block.strip()
-    if not text:
-        return []
-    start = text.find("[")
-    if start < 0:
-        return []
-    try:
-        value, _ = json.JSONDecoder().raw_decode(text[start:])
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(value, list):
-        return []
-    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+    return extract_json_array_paths(block)
 
 
 def _extract_paths_from_line(line: str) -> list[str]:
-    urls = re.findall(r"https?://[^\s\"'<>，]+", line)
-    if urls:
-        return urls
-    parts = [part.strip().strip("\"'") for part in re.split(r"[,，;；]", line)]
-    return [part for part in parts if part and not part.endswith("：")]
+    return extract_paths_from_line(line)
 
 
 def _starts_section(line: str, label: str) -> bool:
-    return bool(re.match(rf"^{re.escape(label)}\s*[:：]", line, flags=re.IGNORECASE))
+    return starts_section(line, label)
 
 
 def _strip_section_label(line: str) -> str:
-    return re.sub(r"^[^:：]+[:：]\s*", "", line, count=1).strip()
+    return strip_section_label(line)
 
 
 def _dedupe(values: list[str]) -> list[str]:
-    seen = set()
-    result = []
-    for value in values:
-        key = value.lower()
-        if key not in seen:
-            seen.add(key)
-            result.append(value)
-    return result
-
+    return dedupe(values)

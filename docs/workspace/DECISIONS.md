@@ -94,11 +94,11 @@
 - 原因: 招标文件审查的原 CLI/API/MCP 已稳定，当前只需要让 Dify/FastGPT 的 LLM 节点可以流式接入；薄包装能避免业务逻辑分叉。
 - 影响: 新入口提供 `GET /v1/models` 和 `POST /v1/chat/completions`，模型 ID 为 `tender-format-review-agent`。prompt 通过“招标文件”区块传入服务端 `.docx` 路径或 HTTP(S) `.docx` 链接；远程文件临时下载后交给原服务层，报告仍由原 LangGraph 工作流生成。流式模式默认把非最终进度写入 `delta.reasoning_content`，最终报告写入 `delta.content`，可用 `thinking=false` 回退。为兼容当前 FastGPT/MinIO 部署，临时将 `10.71.2.94:9000` 的实际传输地址映射为 `127.0.0.1:9002`，同时保留原始 `Host` 头；修正 FastGPT 签名地址后应删除该映射。
 
-## 2026-06-30 - 知识库智能体保留独立子项目形态
+## 2026-07-13 - 知识库智能体纳入工作区统一追踪
 
-- 决策: 外部导入的 `langchain_knowledge_base` 保留独立 `pyproject.toml`、`.env.example`、Dockerfile、Compose 和 README；运行、测试、入库、问答、Docker Compose 均以 `src/agents/langchain_knowledge_base/` 为工作目录。
-- 原因: 用户希望该智能体完成后可从多智能体工作区分离出去独立交付；如果强行改成工作区根包导入，会增加分离成本和路径耦合。
-- 影响: 工作区只登记其位置、状态、运行方法和密钥变量，不把它纳入根目录统一启动方式。该智能体使用 Chroma `PersistentClient` 本地持久化，非 Docker 默认写入 `data/chroma/`，Compose 写入命名卷 `kb_chroma_data` 挂载的 `/app/data/chroma`；默认不启动独立 Chroma 服务。
+- 决策: 移除 `src/agents/langchain_knowledge_base/.git` 嵌套仓库元数据，使知识库智能体与其他智能体一起由工作区根 Git 仓库追踪；保留其 `pyproject.toml`、`.env.example`、Dockerfile、Compose 和本地运行入口。
+- 原因: 用户需要创建一个整体 GitHub 仓库并统一追踪提交，嵌套 Git 仓库会让根仓库无法直接纳入知识库源代码及其后续修改。
+- 影响: 该智能体的源码、测试、文档和运行配置随主仓库提交；运行、测试、入库和 Docker Compose 都从工作区根目录执行。应用配置会按自身目录解析 `.env`、文档和 Chroma 数据，避免根目录启动改变运行数据位置。Chroma 继续使用本地 `PersistentClient`，Compose 使用 `kb_chroma_data` 卷，默认不启动独立 Chroma 服务。
 
 ## 2026-07-07 - FastGPT 工作流转化优先抽取可复用经验
 
@@ -129,3 +129,15 @@
 - 决策: 为 `contract-review` 和 `official-document-review` 分别新增 `openai_compatible_api.py`，模型 ID 分别为 `contract-review-agent` 和 `official-document-review-agent`，均复用原服务层。
 - 原因: 用户希望近期从 FastGPT JSON 转化出的智能体都能作为 FastGPT/Dify 自定义 LLM 节点调用；薄包装可以统一模型探测、流式输出和平台接入方式。
 - 影响: 两个入口均支持 readiness、非流式、流式 SSE 和 `thinking=false`；文件读取仍由原智能体服务层负责，复杂远程文件下载和 OCR 后续按实际平台需要单独扩展。
+
+## 2026-07-07 - 文件型 OpenAI-compatible 入口共享附件解析
+
+- 决策: 新增 `src/agents/openai_compatible_inputs.py`，统一解析 OpenAI-compatible 消息中的文本、平台 `附件：` 列表、JSON 数组、多行 URL、本地路径和 content parts 的 `file_url.url` / `image_url.url`。
+- 原因: FastGPT/Dify 等平台上传文件后不一定会渲染为各智能体原先要求的“简历文件/合同文件/公文文件/招标文件”区块；把兼容逻辑放在薄适配层能避免要求平台硬编码业务标签，也避免 5 个入口继续复制分叉。
+- 影响: `batch-resume-review-llm`、`smart-resume-screening`、`contract-review`、`official-document-review` 和 `tender-format-review` 的 OpenAI-compatible 入口都能读取 `附件：` 或 content parts 文件 URL；原 CLI/API/MCP 和服务层不变。URL 仍必须能被智能体服务所在网络环境访问。
+
+## 2026-07-07 - 简历类 LLM 入口支持附件前正文作为 JD
+
+- 决策: `batch-resume-review-llm` 和 `smart-resume-screening` 在已识别简历文件但没有显式 `岗位要求` / `JD` 区块时，把首个 `附件`、`简历文件`、`简历路径` 或 `输出要求` 之前的正文作为岗位要求，并保留 Markdown 原文。
+- 原因: 平台聊天页上传文件后会把附件 URL 追加到用户正文之后；用户常直接粘贴 Markdown 岗位要求，而不是额外加 `岗位要求：` 标签。旧解析会误判为“有附件但没有 JD”，返回 readiness。
+- 影响: 简历类 OpenAI-compatible 入口对平台真实输入更宽容；显式标签协议仍优先。合同、公文和招标入口不依赖 JD 才能启动，因此不需要同类 fallback。

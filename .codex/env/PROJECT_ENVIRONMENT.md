@@ -49,8 +49,8 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Start resume review API | Windows PowerShell | Project root | `uvicorn src.agents.resume_review.api:app --reload --port 8004` | Dry-run `/review` with a local text resume |
 | Start batch resume API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review.api:app --reload --port 8006` | Dry-run `/review` with sample resume paths |
 | Start batch resume LLM API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006` | `GET http://127.0.0.1:8006/v1/models`; do not run at same time as original batch API |
-| Start knowledge base API | Windows PowerShell | `src\agents\langchain_knowledge_base` | `uvicorn kb_api.main:app --host 0.0.0.0 --port 8008` | `Invoke-RestMethod http://127.0.0.1:8008/health` |
-| Start Docker Compose for knowledge base | WSL `Ubuntu` | WSL path for `src\agents\langchain_knowledge_base` | `docker compose up --build` | `docker compose ps` from `Ubuntu` |
+| Start knowledge base API | Windows PowerShell | Project root | `uvicorn kb_api.main:app --app-dir src/agents/langchain_knowledge_base --host 0.0.0.0 --port 8008` | `Invoke-RestMethod http://127.0.0.1:8008/health` |
+| Start Docker Compose for knowledge base | WSL `Ubuntu` | WSL project root | `docker compose -f src/agents/langchain_knowledge_base/docker-compose.yml up --build` | `docker compose -f src/agents/langchain_knowledge_base/docker-compose.yml ps` from `Ubuntu` |
 | Run all agent tests | Windows PowerShell | Project root | `python -m pytest tests\agents -q` | Test result output |
 | Run focused tests | Windows PowerShell | Project root | `python -m pytest tests\agents\test_<agent>.py -q` | Test result output |
 | Run linters | Windows PowerShell | Project root | `ruff check .` | Ruff success |
