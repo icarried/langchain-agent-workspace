@@ -19,6 +19,27 @@
 
 ## 记录
 
+### 2026-07-14 - 中文 Windows 挂载路径导致 Docker BuildKit 会话头失败
+
+- 状态: Fixed
+- 影响: 在 WSL Ubuntu 从当前 `/mnt/e/.../--创建智能体工作空间--` 路径执行 Compose BuildKit 构建时，无法创建统一 Linux 镜像。
+- 现象: BuildKit 报 `x-docker-expose-session-sharedkey` 包含 non-printable ASCII character。
+- 复现步骤: 在当前 WSL 项目目录运行 `docker compose build gateway`。
+- 初步判断: Windows 挂载路径中的中文进入 BuildKit 会话共享键 HTTP 头，违反 ASCII 头值约束；Dockerfile 本身无关。
+- 已尝试: 设置 `DOCKER_BUILDKIT=0` 使用传统构建器，统一镜像构建成功；Compose 配置、启动和故障隔离验收均通过。
+- 结论: 当前路径使用 `DOCKER_BUILDKIT=0 docker compose build gateway`。项目迁移到纯 ASCII Linux 路径后再恢复 BuildKit。
+- 关联任务: T-036
+
+### 2026-07-14 - 分离 WSL 命令期间 Docker 引擎休眠干扰验收
+
+- 状态: Fixed
+- 影响: 多次独立调用 WSL 命令时，Docker 引擎曾短暂重启，使全部容器同时不可达，容易误判为 worker 故障隔离失败。
+- 现象: 命令间隔后网关和 worker 同时暂时失联，而不是只有被停止的 worker 不可用。
+- 初步判断: 当前 WSL/Docker 生命周期会在无持续会话时休眠或重启。
+- 已尝试: 在同一个持续 WSL shell 中执行 worker 停止、模型列表检查、其他模型调用和恢复检查。
+- 结论: 持续会话验收通过：停止 `contract-review` 后模型数从 6 降为 5，其他 worker 可调用，恢复后重新为 6。
+- 关联任务: T-036
+
 ### 2026-06-25 - Tender LLM wrapper 读取 FastGPT MinIO 预签名 URL 需临时端口映射
 
 - 状态: Fixed
@@ -27,8 +48,8 @@
 - 复现步骤: 在 FastGPT LLM 节点提示词中传入 `http://10.71.2.94:9000/...docx?...X-Amz-Signature=...` 后调用 `tender-format-review-agent`。
 - 初步判断: 这是当前本机 Docker/FastGPT/MinIO 发布端口与签名 Host 不一致导致的环境兼容问题。
 - 已尝试: 在 `src/agents/tender_format_review/openai_compatible_api.py::_temporary_minio_transport_mapping` 中增加临时传输映射：实际 TCP 连接走 `127.0.0.1:9002`，HTTP `Host` 仍保持 `10.71.2.94:9000`，查询签名不改写。
-- 结论: 映射逻辑已有单元测试覆盖，避免直接替换 URL 导致 AWS V4 签名失效。
-- 长期建议: 修正 FastGPT 的 MinIO 外部访问/签名地址，使预签名 URL 直接使用实际可达地址或统一反向代理域名；验证通过后删除该硬编码临时映射和对应测试。
+- 结论: 2026-07-14 已删除智能体硬编码，改由共享附件模块的 `AGENT_REMOTE_TRANSPORT_OVERRIDES` 显式配置，仍保留原 Host 和 AWS V4 查询签名。
+- 长期建议: 优先修正 FastGPT 的 MinIO 外部访问/签名地址，使预签名 URL 直接使用实际可达地址或统一反向代理域名；届时删除环境映射。
 - 关联任务: T-026
 
 ### 2026-06-24 - Windows API 读取 FastGPT MinIO 预签名 URL 返回 404

@@ -1,22 +1,18 @@
 from __future__ import annotations
 
 import json
-import os
 import queue
-import tempfile
 import threading
 import time
-import urllib.parse
-import urllib.request
 import uuid
 from collections.abc import Generator
-from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
+from src.agents.openai_compatible import OpenAIChatCompletionRequest, OpenAIChatMessage
 from src.agents.openai_compatible_inputs import (
     dedupe,
     extract_json_array_paths,
@@ -27,31 +23,19 @@ from src.agents.openai_compatible_inputs import (
     starts_section,
     strip_section_label,
 )
+from src.agents.remote_files import apply_transport_override, materialize_sources
 
 from .service import review_tender_format
 
 MODEL_ID = "tender-format-review-agent"
-DEFAULT_REMOTE_TIMEOUT_SECONDS = 30
-DEFAULT_MAX_REMOTE_FILE_BYTES = 50 * 1024 * 1024
-TEMP_MINIO_SIGNED_NETLOC = "10.71.2.94:9000"
-TEMP_MINIO_TRANSPORT_NETLOC = "127.0.0.1:9002"
 
 
-class ChatMessage(BaseModel):
-    role: str
-    content: Any
+class ChatMessage(OpenAIChatMessage):
+    pass
 
 
-class ChatCompletionRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class ChatCompletionRequest(OpenAIChatCompletionRequest):
     model: str = MODEL_ID
-    messages: list[ChatMessage] = Field(default_factory=list)
-    stream: bool = False
-    provider: str = "deepseek"
-    review_model: str | None = None
-    dry_run: bool = False
-    thinking: bool = True
 
 
 class ParsedTenderReviewRequest(BaseModel):
@@ -221,65 +205,22 @@ def _run_review_worker(
 
 
 def _run_review(review_request: ParsedTenderReviewRequest) -> dict[str, Any]:
-    docx_path, cleanup = _materialize_docx_input(review_request.docx_input)
-    try:
+    with materialize_sources(
+        [review_request.docx_input],
+        allowed_suffixes={".docx"},
+        prefix="tender-review-",
+    ) as paths:
         return review_tender_format(
-            docx_path,
+            paths[0],
             provider=review_request.provider,
             model=review_request.review_model,
             dry_run=review_request.dry_run,
         )
-    finally:
-        if cleanup:
-            Path(docx_path).unlink(missing_ok=True)
-
-
-def _materialize_docx_input(docx_input: str) -> tuple[str, bool]:
-    if not _is_http_url(docx_input):
-        return docx_input, False
-
-    parsed = urllib.parse.urlparse(docx_input)
-    suffix = Path(urllib.parse.unquote(parsed.path)).suffix.lower()
-    if suffix != ".docx":
-        raise RuntimeError("OpenAI-compatible 入口目前只支持 .docx 招标文件链接。")
-
-    max_bytes = int(os.getenv("TENDER_REVIEW_MAX_REMOTE_FILE_BYTES", DEFAULT_MAX_REMOTE_FILE_BYTES))
-    timeout = int(os.getenv("TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS", DEFAULT_REMOTE_TIMEOUT_SECONDS))
-    request = _remote_docx_request(docx_input)
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-        content_length = response.headers.get("Content-Length")
-        if content_length and int(content_length) > max_bytes:
-            raise RuntimeError("远程招标文件超过大小上限。")
-        data = response.read(max_bytes + 1)
-    if len(data) > max_bytes:
-        raise RuntimeError("远程招标文件超过大小上限。")
-
-    fd, temp_path = tempfile.mkstemp(prefix="tender-review-", suffix=".docx")
-    with os.fdopen(fd, "wb") as file:
-        file.write(data)
-    return temp_path, True
-
-
-def _remote_docx_request(docx_input: str) -> urllib.request.Request:
-    transport_url, headers = _temporary_minio_transport_mapping(docx_input)
-    headers["User-Agent"] = "tender-format-review-agent/0.1"
-    return urllib.request.Request(transport_url, headers=headers)
 
 
 def _temporary_minio_transport_mapping(url: str) -> tuple[str, dict[str, str]]:
-    """Route the current FastGPT MinIO URL through localhost without changing Host.
-
-    Temporary deployment workaround: FastGPT emits signed URLs for
-    10.71.2.94:9000, but this Windows host reaches that MinIO instance through
-    127.0.0.1:9002. AWS V4 signs the Host header, so only the TCP transport
-    netloc is changed; the original signed Host is deliberately preserved.
-    """
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme != "http" or parsed.netloc != TEMP_MINIO_SIGNED_NETLOC:
-        return url, {}
-
-    mapped = parsed._replace(netloc=TEMP_MINIO_TRANSPORT_NETLOC)
-    return urllib.parse.urlunparse(mapped), {"Host": parsed.netloc}
+    """Deprecated compatibility alias for the generic transport override."""
+    return apply_transport_override(url)
 
 
 def _chat_completion_response(
@@ -416,11 +357,6 @@ def _starts_section(line: str, label: str) -> bool:
 
 def _strip_section_label(line: str) -> str:
     return strip_section_label(line)
-
-
-def _is_http_url(value: str) -> bool:
-    parsed = urllib.parse.urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _dedupe(values: list[str]) -> list[str]:

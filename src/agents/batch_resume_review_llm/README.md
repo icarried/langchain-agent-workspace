@@ -1,6 +1,6 @@
 # Batch Resume Review LLM Agent
 
-`batch-resume-review-llm` 是从 `batch-resume-review` 隔离复制出来的 OpenAI-compatible 流式适配版。原智能体保持不变；本智能体面向 Dify、FastGPT 等平台的自定义 LLM 节点，让平台按模型调用方式接入批量简历审查并流式显示进度和最终报告。
+`batch-resume-review-llm` 是批量简历审查的唯一业务实现，并提供 OpenAI-compatible 流式适配。本智能体面向 Dify、FastGPT 等平台的自定义 LLM 节点；旧 `batch-resume-review` 包仅保留兼容转发。
 
 ## 能力
 
@@ -10,22 +10,24 @@
 - 新增 OpenAI-compatible Chat Completions：`GET /v1/models`、`POST /v1/chat/completions`。
 - 模型 ID：`batch-resume-review-agent`。
 
-## 启动 OpenAI-compatible 服务
+## 统一入口
+
+生产环境运行根目录 Compose，或本机运行 `python -m src.agent_gateway dev --port 8004`。平台统一配置：
+
+- Base URL: `http://<服务地址>:8004/v1`
+- Model: `batch-resume-review-agent`
+- API Key: `AGENT_GATEWAY_API_KEY`；未启用鉴权时可填占位值。
+- Stream: 开启。
+
+以下命令只用于单 worker 调试：
 
 ```powershell
 uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006
 ```
 
-端口沿用原 `batch-resume-review` API 的 `8006`。不要同时启动原智能体和本智能体。
+独立 `8006` 不进入生产 Compose，也不作为平台推荐入口。
 
-## Dify / FastGPT 配置
-
-把本服务配置为 OpenAI-compatible 自定义模型：
-
-- Base URL: `http://<服务地址>:8006/v1`
-- Model: `batch-resume-review-agent`
-- API Key: 可填写平台要求的任意占位值；当前服务不读取真实平台密钥。
-- Stream: 开启。
+## Dify / FastGPT 提示词
 
 推荐在 LLM 节点提示词中传入：
 

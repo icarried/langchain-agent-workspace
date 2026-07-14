@@ -1,0 +1,106 @@
+# 多智能体统一网关
+
+统一网关是所有 OpenAI-compatible 智能体的推荐入口。对外只发布 `8004`，调用方通过请求体中的 `model` 选择智能体；各智能体 worker 独立运行，单个 worker 停止不会带崩网关或其他模型。
+
+## 平台接入
+
+FastGPT、Dify 或其他 OpenAI-compatible 客户端统一配置：
+
+```text
+Base URL: http://<host>:8004/v1
+API Key: <AGENT_GATEWAY_API_KEY；未启用鉴权时可填占位值>
+Stream: enabled
+```
+
+当前模型 ID：
+
+- `batch-resume-review-agent`
+- `tender-format-review-agent`
+- `smart-resume-screening-agent`
+- `contract-review-agent`
+- `official-document-review-agent`
+- `langchain-knowledge-base-agent`
+
+`GET /v1/models` 只返回当前健康、可调用的模型。未知模型返回 `404 model_not_found`；已登记但不可用的模型返回 `503 model_unavailable`。`GET /health` 返回网关和各 worker 的脱敏状态。
+
+生产环境应设置 `AGENT_GATEWAY_API_KEY`。请求使用 `Authorization: Bearer <key>`；默认不设置时关闭鉴权，以兼容现有平台。
+
+## 本机开发
+
+```powershell
+python -m src.agent_gateway dev --port 8004
+python -m src.agent_gateway dev --port 8004 --models batch-resume-review-agent,contract-review-agent
+```
+
+启动器为 worker 自动选择回环端口，异常退出后按 1、2、5、10、30 秒上限退避重启，按 Ctrl+C 会清理全部子进程。旧 `resume-review` REST API 如需单独调试，必须显式选择非 `8004` 端口。
+
+## Docker Compose 生产部署
+
+本机 Docker 由 WSL `Ubuntu` 管理。先确认路径与身份：
+
+```powershell
+wsl.exe -d Ubuntu -- bash -lc 'cd /mnt/e/My_sorcode/--创建智能体工作空间-- && pwd && whoami && docker compose config --quiet'
+```
+
+构建并启动：
+
+```powershell
+wsl.exe -d Ubuntu -- bash -lc 'cd /mnt/e/My_sorcode/--创建智能体工作空间-- && DOCKER_BUILDKIT=0 docker compose build gateway && docker compose up -d'
+```
+
+当前 Windows 挂载路径含中文时，BuildKit 会因会话共享键头包含非 ASCII 字符而失败，因此使用传统构建器；项目迁移到纯 ASCII Linux 路径后可重新验证 BuildKit。
+
+Compose 仅把 gateway 发布为 `8004:8004`；worker 只在 Compose 网络内监听 `8080`，并通过服务 DNS 寻址。停止服务使用 `docker compose down`。不要执行 `docker compose down -v`，除非明确要删除知识库持久化卷。
+
+故障隔离验收：
+
+```bash
+python3 scripts/verify_agent_gateway_isolation.py
+```
+
+脚本会停止并恢复 `contract-review` worker，验证其模型从列表移除、其他模型仍可调用、恢复后六个模型重新可见。
+
+## 远程附件
+
+文件型智能体支持本地挂载路径、HTTP(S) URL、FastGPT `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url`、`image_url.url`。预签名 MinIO/S3 URL 的查询参数不会被重写。
+
+生产环境应配置 `AGENT_REMOTE_ALLOWED_HOSTS`、`AGENT_REMOTE_MAX_BYTES` 和 `AGENT_REMOTE_TIMEOUT_SECONDS`。仅当签名 Host 与实际传输地址不同时配置 `AGENT_REMOTE_TRANSPORT_OVERRIDES`；传输会保留原始 Host 和查询签名。临时文件在请求结束后清理，不要把完整签名 URL 写入日志或报告。
+
+## 可复用知识库
+
+知识库核心位于 `src/knowledge_base/`，目录固定为：
+
+```text
+data/knowledge_bases/<agent-namespace>/<knowledge-base-name>/
+├── documents/
+├── chroma/
+└── manifest.json
+```
+
+namespace 和知识库名称必须是安全 slug。不同 namespace、知识库及 Chroma collection 完全隔离；旧 primary/secondary 配置和数据不兼容，也不迁移。
+
+当前 worker 使用 namespace `langchain-knowledge-base-agent` 和默认知识库 `default`。本地管理示例：
+
+```powershell
+python -m src.knowledge_base documents-dir default
+python -m src.knowledge_base ingest default
+python -m src.knowledge_base retrieve default "检索问题"
+python -m src.knowledge_base list
+```
+
+容器内可将 `python -m src.knowledge_base` 替换为 `docker compose exec langchain-knowledge-base python -m src.knowledge_base`。worker 内部还提供：
+
+```text
+GET  /v1/knowledge-bases
+POST /v1/knowledge-bases/{name}/ingest
+POST /v1/knowledge-bases/{name}/retrieval
+```
+
+这些管理接口不由首版网关公开。新智能体直接复用 `KnowledgeBaseManager(namespace)`，并使用自己的稳定 namespace。
+
+## 新增模型
+
+1. 为智能体提供 `GET /health`、`GET /v1/models` 和 `POST /v1/chat/completions`。
+2. 在 `config/agent_gateway.json` 登记稳定模型 ID、模块入口和 worker URL。
+3. 在 `compose.yaml` 新增独立 worker 服务，内部监听 `8080`，不要发布宿主机端口。
+4. 更新智能体登记表和平台文档，并补充网关聚合、流式代理和故障隔离测试。

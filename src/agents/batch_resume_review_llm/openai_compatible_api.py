@@ -10,8 +10,7 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
-
+from src.agents.openai_compatible import OpenAIChatCompletionRequest, OpenAIChatMessage
 from src.agents.openai_compatible_inputs import (
     dedupe,
     extract_json_array_paths,
@@ -29,21 +28,12 @@ from .api import BatchResumeReviewRequest, review
 MODEL_ID = "batch-resume-review-agent"
 
 
-class ChatMessage(BaseModel):
-    role: str
-    content: Any
+class ChatMessage(OpenAIChatMessage):
+    pass
 
 
-class ChatCompletionRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class ChatCompletionRequest(OpenAIChatCompletionRequest):
     model: str = MODEL_ID
-    messages: list[ChatMessage] = Field(default_factory=list)
-    stream: bool = False
-    provider: str = "deepseek"
-    review_model: str | None = None
-    dry_run: bool = False
-    thinking: bool = True
 
 
 app = FastAPI(

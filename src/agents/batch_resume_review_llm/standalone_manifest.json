@@ -25,5 +25,11 @@
     "review_guide/*.md",
     "references/universities/*.md",
     "examples/*.md"
-  ]
+  ],
+  "workspace_files": {
+    "src/__init__.py": "src/src/__init__.py",
+    "src/agents/__init__.py": "src/src/agents/__init__.py",
+    "src/agents/openai_compatible.py": "src/src/agents/openai_compatible.py",
+    "src/agents/openai_compatible_inputs.py": "src/src/agents/openai_compatible_inputs.py"
+  }
 }

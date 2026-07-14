@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -9,23 +10,25 @@ import zipfile
 from pathlib import Path
 
 from scripts.package_agent_standalone import build_bundle
-from src.agents.batch_resume_review.reference_loader import (
+from src.agents.batch_resume_review_llm.reference_loader import (
     DEFAULT_UNIVERSITY_REFERENCE_DIR,
     load_university_references,
 )
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-AGENT_DIR = WORKSPACE_ROOT / "src" / "agents" / "batch_resume_review"
+AGENT_DIR = WORKSPACE_ROOT / "src" / "agents" / "batch_resume_review_llm"
 
 
-def test_agent_has_no_workspace_python_imports() -> None:
-    violations = []
+def test_workspace_python_imports_are_declared_for_vendoring() -> None:
+    imported_modules = set()
     for source_path in AGENT_DIR.rglob("*.py"):
         source = source_path.read_text(encoding="utf-8")
-        if "from src." in source or "import src." in source:
-            violations.append(source_path.relative_to(AGENT_DIR).as_posix())
-    assert violations == []
+        imported_modules.update(re.findall(r"src\.agents\.([A-Za-z0-9_]+)", source))
+    manifest = json.loads((AGENT_DIR / "standalone_manifest.json").read_text("utf-8"))
+    vendored_sources = set(manifest["workspace_files"])
+    assert imported_modules
+    assert {f"src/agents/{name}.py" for name in imported_modules} <= vendored_sources
 
 
 def test_university_references_are_embedded() -> None:
@@ -38,8 +41,8 @@ def test_university_references_are_embedded() -> None:
 
 
 def test_build_bundle_contains_runtime_and_distribution_files(tmp_path: Path) -> None:
-    archive_path = build_bundle("batch_resume_review", tmp_path)
-    root = "batch-resume-review-agent-0.2.0"
+    archive_path = build_bundle("batch_resume_review_llm", tmp_path)
+    root = "batch-resume-review-llm-agent-0.1.0"
 
     with zipfile.ZipFile(archive_path) as archive:
         names = set(archive.namelist())
@@ -48,9 +51,11 @@ def test_build_bundle_contains_runtime_and_distribution_files(tmp_path: Path) ->
         assert f"{root}/mcp-config.example.json" in names
         assert f"{root}/mcp_client_example.py" in names
         assert f"{root}/MANIFEST.sha256.json" in names
-        assert f"{root}/src/batch_resume_review/graph.py" in names
+        assert f"{root}/src/batch_resume_review_llm/graph.py" in names
+        assert f"{root}/src/src/agents/openai_compatible.py" in names
+        assert f"{root}/src/src/agents/openai_compatible_inputs.py" in names
         assert any(
-            name.startswith(f"{root}/src/batch_resume_review/references/universities/")
+            name.startswith(f"{root}/src/batch_resume_review_llm/references/universities/")
             and name.endswith(".md")
             for name in names
         )
@@ -60,32 +65,32 @@ def test_build_bundle_contains_runtime_and_distribution_files(tmp_path: Path) ->
 
         checksums = json.loads(archive.read(f"{root}/MANIFEST.sha256.json"))
         assert checksums["algorithm"] == "sha256"
-        assert "src/batch_resume_review/graph.py" in checksums["files"]
+        assert "src/batch_resume_review_llm/graph.py" in checksums["files"]
         pyproject = tomllib.loads(archive.read(f"{root}/pyproject.toml").decode("utf-8"))
-        assert pyproject["project"]["name"] == "batch-resume-review-agent"
-        assert pyproject["project"]["scripts"]["batch-resume-review"] == (
-            "batch_resume_review.cli:app"
+        assert pyproject["project"]["name"] == "batch-resume-review-llm-agent"
+        assert pyproject["project"]["scripts"]["batch-resume-review-llm"] == (
+            "batch_resume_review_llm.cli:app"
         )
 
 
 def test_extracted_bundle_runs_dry_run_and_mcp_in_process(tmp_path: Path) -> None:
-    archive_path = build_bundle("batch_resume_review", tmp_path)
+    archive_path = build_bundle("batch_resume_review_llm", tmp_path)
     extract_dir = tmp_path / "extracted"
     with zipfile.ZipFile(archive_path) as archive:
         archive.extractall(extract_dir)
 
-    bundle_root = extract_dir / "batch-resume-review-agent-0.2.0"
+    bundle_root = extract_dir / "batch-resume-review-llm-agent-0.1.0"
     script = r'''
 import asyncio
 import base64
 from pathlib import Path
 
 from fastmcp import Client
-from batch_resume_review.mcp_server import mcp
-from batch_resume_review.service import review_resumes
+from batch_resume_review_llm.mcp_server import mcp
+from batch_resume_review_llm.service import review_resumes
 
 root = Path.cwd()
-examples = root / "src" / "batch_resume_review" / "examples"
+examples = root / "src" / "batch_resume_review_llm" / "examples"
 resumes = sorted(examples.glob("候选示例*.md"))[:2]
 jd = examples / "人工智能开发工程师岗位要求.md"
 result = review_resumes(resumes, job_description_path=jd, dry_run=True)

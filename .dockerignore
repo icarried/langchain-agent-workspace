@@ -1,0 +1,13 @@
+.git
+.agents
+.codex
+.env.local
+secrets
+dist
+临时文件
+tmp
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/*.pyc
+src/agents/langchain_knowledge_base/data

@@ -141,3 +141,27 @@
 - 决策: `batch-resume-review-llm` 和 `smart-resume-screening` 在已识别简历文件但没有显式 `岗位要求` / `JD` 区块时，把首个 `附件`、`简历文件`、`简历路径` 或 `输出要求` 之前的正文作为岗位要求，并保留 Markdown 原文。
 - 原因: 平台聊天页上传文件后会把附件 URL 追加到用户正文之后；用户常直接粘贴 Markdown 岗位要求，而不是额外加 `岗位要求：` 标签。旧解析会误判为“有附件但没有 JD”，返回 readiness。
 - 影响: 简历类 OpenAI-compatible 入口对平台真实输入更宽容；显式标签协议仍优先。合同、公文和招标入口不依赖 JD 才能启动，因此不需要同类 fallback。
+
+## 2026-07-14 - 统一网关路由到隔离 worker
+
+- 决策: OpenAI-compatible 生产入口统一为 `8004`，网关按 `model` 路由到独立 worker；worker 在 Compose 内统一监听 `8080`，不发布宿主机端口。本机开发使用同一注册表和子进程监管器。
+- 原因: 每个智能体占用独立对外端口不利于扩容，也使平台配置和故障处理分散。网关与 worker 分进程/容器可在保持单入口的同时隔离故障。
+- 影响: FastGPT/Dify 统一配置 `http://<host>:8004/v1`；`GET /v1/models` 只返回健康模型。原独立 OpenAI 端口及 REST/MCP 源码仅用于调试，不进入生产 Compose。此决策覆盖此前将 `8004` 分配给 `resume-review` REST API 的约定。
+
+## 2026-07-14 - 批量简历业务实现收敛到 LLM 包
+
+- 决策: `batch_resume_review_llm` 是批量简历唯一业务实现；`batch_resume_review` 只保留导入、CLI 和 REST API 薄兼容转发。
+- 原因: 两套复制代码、示例和参考资料会持续分叉，统一网关已经通过进程隔离解决生产稳定性问题，不再需要源码复制隔离。
+- 影响: 模型 ID 和现有调用行为保持不变；新增功能、修复、资料和测试只维护在 canonical 包。此决策取代 2026-06-25 的“隔离复制”决策。
+
+## 2026-07-14 - 知识库按 namespace 和名称破坏性重构
+
+- 决策: 删除旧 `kb_api` 独立项目、Langflow、primary/secondary 路由和旧 Chroma 兼容，建立工作区级 `KnowledgeBaseManager(namespace)`；数据固定存放于 `data/knowledge_bases/<namespace>/<name>/`。
+- 原因: 旧结构围绕单个智能体和两个硬编码知识库设计，难以让后续多个智能体可靠复用并隔离数据与 embedding 配置。
+- 影响: 不迁移测试数据或旧向量库。每个智能体使用稳定安全 slug namespace，每个知识库独占 documents、Chroma 和 manifest；embedding 配置变化要求显式重建。
+
+## 2026-07-14 - 文件型智能体共享安全远程附件传输
+
+- 决策: 文件型 OpenAI-compatible 包装器共用远程附件模块，统一主机白名单、大小、超时、扩展名、临时文件清理及签名 Host 传输映射。
+- 原因: 各智能体自行下载会重复安全边界，并产生针对单台机器的硬编码端口映射。
+- 影响: 招标智能体移除 `10.71.2.94:9000 -> 127.0.0.1:9002` 硬编码；特殊网络使用 `AGENT_REMOTE_TRANSPORT_OVERRIDES` 显式配置，保留原始 Host 与查询签名。

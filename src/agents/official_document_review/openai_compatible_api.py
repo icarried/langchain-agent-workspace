@@ -11,8 +11,9 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
+from src.agents.openai_compatible import OpenAIChatCompletionRequest, OpenAIChatMessage
 from src.agents.openai_compatible_inputs import (
     dedupe,
     extract_json_array_paths,
@@ -24,27 +25,19 @@ from src.agents.openai_compatible_inputs import (
     starts_section,
     strip_section_label,
 )
+from src.agents.remote_files import materialize_sources
 
 from .service import review_official_document
 
 MODEL_ID = "official-document-review-agent"
 
 
-class ChatMessage(BaseModel):
-    role: str
-    content: Any
+class ChatMessage(OpenAIChatMessage):
+    pass
 
 
-class ChatCompletionRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class ChatCompletionRequest(OpenAIChatCompletionRequest):
     model: str = MODEL_ID
-    messages: list[ChatMessage] = Field(default_factory=list)
-    stream: bool = False
-    provider: str = "deepseek"
-    review_model: str | None = None
-    dry_run: bool = False
-    thinking: bool = True
 
 
 class ParsedDocumentRequest(BaseModel):
@@ -196,13 +189,18 @@ def _run_review_worker(review_request: ParsedDocumentRequest, events: queue.Queu
 
 
 def _run_review(review_request: ParsedDocumentRequest) -> dict[str, Any]:
-    return review_official_document(
-        review_request.document_path,
-        document_type=review_request.document_type,
-        provider=review_request.provider,
-        model=review_request.review_model,
-        dry_run=review_request.dry_run,
-    )
+    with materialize_sources(
+        [review_request.document_path],
+        allowed_suffixes={".docx", ".pdf", ".txt", ".md"},
+        prefix="official-document-review-",
+    ) as paths:
+        return review_official_document(
+            paths[0],
+            document_type=review_request.document_type,
+            provider=review_request.provider,
+            model=review_request.review_model,
+            dry_run=review_request.dry_run,
+        )
 
 
 def _chat_completion_response(model: str, content: str, *, created: int | None = None) -> JSONResponse:

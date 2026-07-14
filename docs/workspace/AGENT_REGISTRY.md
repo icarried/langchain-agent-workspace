@@ -10,6 +10,13 @@
 - 相关任务应同步写入 `.agents/tasks/TASK_BOARD.md`。
 - 不在本文件记录真实 API key，只记录需要的环境变量名。
 
+## 统一部署入口
+
+- OpenAI-compatible 生产入口统一为 `http://<host>:8004/v1`，模型由请求体 `model` 选择。
+- `GET /v1/models` 只列出健康 worker。Compose 中每个 worker 独立监听内部 `8080`，不发布宿主机端口。
+- 原 REST API、MCP 和独立 OpenAI-compatible 端口仅保留源码用于单智能体调试，不进入生产 Compose。
+- 部署、鉴权、附件和知识库说明见 `docs/development/AGENT_GATEWAY.md`。
+
 ## 智能体列表
 
 ### smart-resume-screening
@@ -20,7 +27,7 @@
 - 运行入口: `python -m src.agents.smart_resume_screening screen <resume-a> <resume-b> --job-description <jd.txt> --output <report.md>`
 - MCP 入口: stdio `python -m src.agents.smart_resume_screening.mcp_server`；HTTP `python -m src.agents.smart_resume_screening.mcp_server --transport http --host 127.0.0.1 --port 8011 --path /mcp`；tool 名称 `screen_resumes`。
 - API 入口: `uvicorn src.agents.smart_resume_screening.api:app --reload --port 8011`，主接口 `POST /screen`。
-- OpenAI-compatible 入口: `uvicorn src.agents.smart_resume_screening.openai_compatible_api:app --host 0.0.0.0 --port 8012`，模型 ID `smart-resume-screening-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8004/v1`，模型 ID `smart-resume-screening-agent`。
 - 调试方式: 先用内置 `src/agents/smart_resume_screening/examples/` 执行 `--dry-run`，确认条件解析、候选人状态和排行榜；正式运行再接入 DeepSeek 或 DashScope/Qwen 整理报告。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `SMART_RESUME_SCREENING_MODEL`、`SMART_RESUME_SCREENING_BASE_URL`。
 - 关联任务: T-030、T-031
@@ -34,7 +41,7 @@
 - 运行入口: `python -m src.agents.official_document_review review <document> --document-type 通知 --output <report.md>`
 - MCP 入口: stdio `python -m src.agents.official_document_review.mcp_server`；HTTP `python -m src.agents.official_document_review.mcp_server --transport http --host 127.0.0.1 --port 8010 --path /mcp`；tool 名称 `review_official_document`。
 - API 入口: `uvicorn src.agents.official_document_review.api:app --reload --port 8010`，主接口 `POST /review`。
-- OpenAI-compatible 入口: `uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0.0.0 --port 8013`，模型 ID `official-document-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8004/v1`，模型 ID `official-document-review-agent`。
 - 调试方式: 先用内置 `src/agents/official_document_review/examples/示例通知.md` 执行 `--dry-run`，确认文件解析、确定性检查和报告结构；正式运行再接入 DeepSeek 或 DashScope/Qwen 美化报告。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `OFFICIAL_DOCUMENT_REVIEW_MODEL`、`OFFICIAL_DOCUMENT_REVIEW_BASE_URL`。
 - 关联任务: T-029、T-032
@@ -48,7 +55,7 @@
 - 运行入口: `python -m src.agents.contract_review review <contract> --client-role 甲方 --contract-type 技术服务合同 --transaction-background <背景> --output <report.md>`
 - MCP 入口: stdio `python -m src.agents.contract_review.mcp_server`；HTTP `python -m src.agents.contract_review.mcp_server --transport http --host 127.0.0.1 --port 8009 --path /mcp`；tool 名称 `review_contract`。
 - API 入口: `uvicorn src.agents.contract_review.api:app --reload --port 8009`，主接口 `POST /review`。
-- OpenAI-compatible 入口: `uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --port 8014`，模型 ID `contract-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8004/v1`，模型 ID `contract-review-agent`。
 - 调试方式: 先用内置 `src/agents/contract_review/examples/示例服务合同.md` 执行 `--dry-run`，确认解析、分块、六维审查结构和评分口径；正式运行再接入 DeepSeek 或 DashScope/Qwen。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `CONTRACT_REVIEW_MODEL`、`CONTRACT_REVIEW_BASE_URL`。
 - 关联任务: T-028、T-032
@@ -57,44 +64,40 @@
 ### langchain-knowledge-base
 
 - 状态: Ready
-- 用途: Code-first 本地知识库 RAG 智能体，支持本地 PDF、DOCX、Markdown、TXT 文档入库、检索问答、来源引用、无依据拒答、基础 eval，以及 Langflow 演示 UI。
+- 用途: 基于工作区级可复用知识库核心的 RAG 智能体，支持 PDF、DOCX、Markdown、TXT 文档入库、检索问答、来源引用和无依据拒答。
 - 源码路径: `src/agents/langchain_knowledge_base/`
-- 工作区定位: 与其他智能体共同由根 Git 仓库追踪；API、测试和 Docker Compose 命令从工作区根目录执行。
-- API 入口: 在根目录运行 `uvicorn kb_api.main:app --app-dir src/agents/langchain_knowledge_base --host 0.0.0.0 --port 8008`，接口包含 `GET /health`、`POST /ingest`、`POST /v1/retrieval`、`GET /v1/models`、`POST /v1/chat/completions`，模型 ID `langchain-knowledge-base-agent`。
-- Docker 入口: 在 WSL Ubuntu 的工作区根目录运行 `docker compose -f src/agents/langchain_knowledge_base/docker-compose.yml up --build`；默认启动 `kb-api` 和 `langflow`，不启动独立 Chroma 服务。
-- 调试方式: 先复制 `src/agents/langchain_knowledge_base/.env.example` 为同目录 `.env`，把文档放入 `data/docs/`、`data/docs/primary/` 或 `data/docs/secondary/`，启动 API 后手动调用 `/ingest`，再调用 `/v1/retrieval` 或 `/v1/chat/completions`。
-- 向量存储: 使用 Chroma `PersistentClient` 本地持久化；非 Docker 默认目录为 `data/chroma/`，Compose 内为 `/app/data/chroma`，通过命名卷 `kb_chroma_data` 保存。`docker compose down` 不删除向量库，只有 `docker compose down -v` 会重置 Compose 持久化数据。
-- 需要的环境变量: `KB_OPENAI_API_KEY`；可选 `KB_OPENAI_BASE_URL`、`KB_CHAT_MODEL`、`KB_EMBEDDING_API_KEY`、`KB_EMBEDDING_BASE_URL`、`KB_EMBEDDING_MODEL`、`KB_DOCS_DIR`、`KB_CHROMA_PERSIST_DIR`、`KB_CHROMA_COLLECTION`、`KB_TOP_K`、`KB_MIN_RELEVANCE_SCORE`，以及 primary/secondary 知识库名称、目录、collection 和 keywords 配置。
-- 关联任务: T-027
-- 备注: 当前首版不包含鉴权、权限过滤、自动监听入库、生产级文档版本管理或 live Docker 真实模型 E2E。Langflow 只作为 demo/debug HTTP UI，不承载核心 RAG 逻辑。
+- 核心路径: `src/knowledge_base/`；公共接口为 `KnowledgeBaseManager(namespace)` 的 `ingest`、`retrieve`、`answer` 和 `list_knowledge_bases`。
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8004/v1`，模型 ID `langchain-knowledge-base-agent`。
+- 内部管理接口: `GET /v1/knowledge-bases`、`POST /v1/knowledge-bases/{name}/ingest`、`POST /v1/knowledge-bases/{name}/retrieval`，不由网关公开。
+- 数据隔离: `data/knowledge_bases/<agent-namespace>/<knowledge-base-name>/`；当前 namespace 为 `langchain-knowledge-base-agent`，默认知识库为 `default`。
+- 需要的环境变量: `KB_DATA_ROOT`、`KB_NAMESPACE`、`KB_DEFAULT_NAME`、`KB_CHAT_MODEL`、`KB_EMBEDDING_MODEL`、对应 API key/base URL、`KB_TOP_K`、`KB_MIN_RELEVANCE_SCORE`。
+- 关联任务: T-027、T-035、T-036
+- 备注: 旧 `kb_api`、Langflow、primary/secondary 配置及旧 Chroma 数据已破坏性移除，不提供迁移；新智能体可直接复用核心并使用独立 namespace。
 
 ### batch-resume-review
 
-- 状态: Ready
-- 用途: 一次审查多份 PDF、DOC、DOCX、MD 或 TXT 简历，强制筛除提示词注入和明确硬条件不符者，对其余候选人统一评分排序，并附加人工复核标记。
+- 状态: Deprecated
+- 用途: 旧包名兼容层；业务实现统一转发到 `batch_resume_review_llm`。
 - 源码路径: `src/agents/batch_resume_review/`
 - 运行入口: `python -m src.agents.batch_resume_review review <resume-a> <resume-b> --job-description <jd.txt> --output <report.md>`
-- MCP 入口: stdio `python -m src.agents.batch_resume_review.mcp_server`；HTTP `python -m src.agents.batch_resume_review.mcp_server --transport http --host 127.0.0.1 --port 8005 --path /mcp`；tool 名称 `review_resumes`。
 - API 入口: `uvicorn src.agents.batch_resume_review.api:app --reload --port 8006`，主接口 `POST /review`。
-- 调试方式: 先用多份本地测试夹具运行 `--dry-run`，再接入模型验证筛除和排序；MCP 接收 `resumes` 文件列表和 `job_description_text`。
-- 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `BATCH_RESUME_REVIEW_MODEL`、`BATCH_RESUME_REVIEW_BASE_URL`、`BATCH_RESUME_REVIEW_ALLOWED_URL_HOSTS`、`BATCH_RESUME_REVIEW_MAX_REMOTE_FILE_BYTES`、`BATCH_RESUME_REVIEW_REMOTE_TIMEOUT_SECONDS`、`BATCH_RESUME_REVIEW_OCR_MODEL`、`BATCH_RESUME_REVIEW_OCR_BASE_URL`、`BATCH_RESUME_REVIEW_OCR_TIMEOUT_SECONDS`、`BATCH_RESUME_REVIEW_OCR_MAX_PAGES`。
-- 独立打包: `python scripts/package_agent_standalone.py --agent batch_resume_review --output-dir dist`，产物可脱离工作区运行。
-- 关联任务: T-016、T-019、T-022、T-023
-- 备注: REST API 的 `resume_paths` 支持服务端路径和 MinIO HTTP(S) 预签名 URL，并对远程读取实施超时、大小上限和可选主机白名单。筛除名单不参与排名，待复核候选人保留排名并同时出现在复核项中。报告显示简历原文姓名和文件名。CLI/API/MCP 均接受 PDF/DOC/DOCX/MD/TXT；扫描件按需使用百炼 OCR。正式审查加载智能体包内 `references/universities/` 高校参照。
+- 调试方式: 旧 CLI 和 API 仍可调用，但新增代码、资料和测试只维护在 `batch_resume_review_llm`。
+- 关联任务: T-016、T-019、T-022、T-023、T-036
+- 备注: 不再独立部署，不再包含重复业务源码、示例和参考资料。
 
 ### batch-resume-review-llm
 
 - 状态: Ready
-- 用途: 隔离复制 `batch-resume-review`，作为 Dify/FastGPT 自定义 OpenAI-compatible LLM 节点的流式模型适配器，输出批量简历审查进度和最终报告。
+- 用途: 批量简历唯一业务实现，同时作为 Dify/FastGPT 自定义 OpenAI-compatible LLM 模型，输出审查进度和最终报告。
 - 源码路径: `src/agents/batch_resume_review_llm/`
 - 运行入口: `python -m src.agents.batch_resume_review_llm review <resume-a> <resume-b> --job-description <jd.txt> --output <report.md>`
-- OpenAI-compatible 入口: `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006`，模型 ID `batch-resume-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8004/v1`，模型 ID `batch-resume-review-agent`。
 - MCP 入口: stdio `python -m src.agents.batch_resume_review_llm.mcp_server`；HTTP `python -m src.agents.batch_resume_review_llm.mcp_server --transport http --host 127.0.0.1 --port 8005 --path /mcp`；tool 名称 `review_resumes`。
 - API 入口: `uvicorn src.agents.batch_resume_review_llm.api:app --reload --port 8006`，主接口 `POST /review`。
 - 调试方式: 先用 `/v1/chat/completions` 的 `dry_run=true` 验证 Dify/FastGPT 模型接入和流式输出，再接入正式模型。
 - 需要的环境变量: 同 `batch-resume-review`。
 - 关联任务: T-024
-- 备注: 本智能体与原 `batch-resume-review` 沿用相同端口，二者不要同时启动；复制隔离用于避免影响原生产可用入口。OpenAI-compatible 入口可从“简历文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` / `image_url.url` 读取文件链接。
+- 备注: OpenAI-compatible 入口可从“简历文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` / `image_url.url` 读取文件链接；旧包名只做兼容转发。
 
 ### resume-review
 
@@ -103,7 +106,7 @@
 - 源码路径: `src/agents/resume_review/`
 - 运行入口: `python -m src.agents.resume_review review <resume> --job-description <jd.txt> --output <report.md>`
 - MCP 入口: stdio `python -m src.agents.resume_review.mcp_server`；HTTP `python -m src.agents.resume_review.mcp_server --transport http --host 127.0.0.1 --port 8003 --path /mcp`；tool 名称 `review_resume`。
-- API 入口: `uvicorn src.agents.resume_review.api:app --reload --port 8004`，主接口 `POST /review`。
+- API 入口: 单独调试可运行 `uvicorn src.agents.resume_review.api:app --reload --port <非8004端口>`，主接口 `POST /review`；`8004` 已由统一网关占用。
 - 调试方式: 先运行 `--dry-run` 验证简历解析、分块和 JD 输入，再接入 DeepSeek 或 DashScope/Qwen 模型。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `RESUME_REVIEW_MODEL`、`RESUME_REVIEW_BASE_URL`。
 - 关联任务: T-015
@@ -117,7 +120,7 @@
 - 运行入口: `python -m src.agents.tender_format_review review <docx> --review-guide <md> --catalog <txt> --output <report.md>`
 - MCP 入口: stdio `python -m src.agents.tender_format_review.mcp_server`；HTTP `python -m src.agents.tender_format_review.mcp_server --transport http --host 127.0.0.1 --port 8002 --path /mcp`；tool 名称 `review_tender_format`。
 - API 入口: `uvicorn src.agents.tender_format_review.api:app --reload --port 8001`，主接口 `POST /review`。
-- OpenAI-compatible 入口: `uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0 --port 8007`，模型 ID `tender-format-review-agent`，接口 `GET /v1/models`、`POST /v1/chat/completions`。
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8004/v1`，模型 ID `tender-format-review-agent`。
 - 调试方式: 先运行 `--dry-run` 验证 docx 解析、分块和输出路径，再接入 DeepSeek 或 DashScope/Qwen 模型。
 - 需要的环境变量: `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`；可选 `TENDER_REVIEW_MODEL`、`TENDER_REVIEW_BASE_URL`、`TENDER_REVIEW_MAX_REMOTE_FILE_BYTES`、`TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS`。
 - 关联任务: T-009、T-011、T-012、T-026

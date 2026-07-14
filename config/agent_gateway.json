@@ -1,0 +1,34 @@
+{
+  "models": [
+    {
+      "id": "batch-resume-review-agent",
+      "app": "src.agents.batch_resume_review_llm.openai_compatible_api:app",
+      "upstream": "http://batch-resume-review:8080"
+    },
+    {
+      "id": "tender-format-review-agent",
+      "app": "src.agents.tender_format_review.openai_compatible_api:app",
+      "upstream": "http://tender-format-review:8080"
+    },
+    {
+      "id": "smart-resume-screening-agent",
+      "app": "src.agents.smart_resume_screening.openai_compatible_api:app",
+      "upstream": "http://smart-resume-screening:8080"
+    },
+    {
+      "id": "contract-review-agent",
+      "app": "src.agents.contract_review.openai_compatible_api:app",
+      "upstream": "http://contract-review:8080"
+    },
+    {
+      "id": "official-document-review-agent",
+      "app": "src.agents.official_document_review.openai_compatible_api:app",
+      "upstream": "http://official-document-review:8080"
+    },
+    {
+      "id": "langchain-knowledge-base-agent",
+      "app": "src.agents.langchain_knowledge_base.openai_compatible_api:app",
+      "upstream": "http://langchain-knowledge-base:8080"
+    }
+  ]
+}

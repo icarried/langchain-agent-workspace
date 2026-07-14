@@ -17,7 +17,9 @@ dependencies:
       - python-docx
       - pypdf
       - PyMuPDF
-      - pywin32
+      - pywin32; platform_system == "Windows"
+      - chromadb
+      - pydantic-settings
       - mcp
       - fastmcp
       - fastapi

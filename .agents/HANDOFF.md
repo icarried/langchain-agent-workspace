@@ -4,15 +4,15 @@
 
 ## 当前交接
 
-- 日期: 2026-06-16
-- 状态: 工作空间基础框架已创建，`langchain` conda 环境已由用户创建完成，工作空间将承载多个智能体。
+- 日期: 2026-07-14
+- 状态: T-036 多智能体统一入口已完成；Compose 正运行于 `8004`，六个 worker 当前健康。
 - 已完成:
-  - 建立 `README.md`、`AGENTS.md` 和文档目录。
-  - 建立 `.agents/tasks/TASK_BOARD.md`。
-  - 整理 API key 到 `.env.local`，原始文件归档到 `secrets/raw/unorganized-api-keys/`。
-  - 添加 `environment.yml` 和 LangChain / LangGraph conda 环境说明。
-  - 确认后续开发默认使用 `conda activate langchain`。
-  - 新增 `docs/workspace/AGENT_REGISTRY.md` 作为多智能体登记表。
+  - 新增 `8004` 统一 OpenAI-compatible 网关、声明式六模型注册和健康过滤。
+  - 新增本机 worker 监管器和根目录 Linux Docker Compose；worker 独立运行且只暴露内部 `8080`。
+  - 将批量简历业务收敛到 `batch_resume_review_llm`，旧包只保留兼容转发。
+  - 破坏性重做可复用知识库核心，按 namespace 和知识库名称隔离。
+  - 共享远程附件安全下载和签名 Host 传输映射，移除招标智能体硬编码。
+  - 146 项正式测试、全量 Ruff 及 Compose 故障隔离验收通过。
 - 下一步建议:
-  - 实现 T-006，添加最小可运行 LangGraph Agent 示例。
-  - 实现 T-007，建立统一模型配置加载。
+  - FastGPT/Dify 统一改为 `http://<host>:8004/v1`，通过模型 ID 选择智能体。
+  - 生产环境启用 `AGENT_GATEWAY_API_KEY` 并配置远程附件主机白名单。

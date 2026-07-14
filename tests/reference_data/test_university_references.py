@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
-
 from src.reference_data.universities import (
     DEFAULT_UNIVERSITY_REFERENCE_DIR,
     load_university_references,

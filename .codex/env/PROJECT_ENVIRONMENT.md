@@ -4,12 +4,26 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 
 ## Metadata
 
-- Last updated: 2026-06-30
+- Last updated: 2026-07-14
 - Updated by: Codex using `$windows-wsl-dev-environment`
 - Project name: Agent Workspace
 - Project root as opened now: `E:\My_sorcode\--创建智能体工作空间--`
 - Environment owner: Windows PowerShell + conda `langchain`; Docker/FastGPT run in WSL `Ubuntu`
-- Notes: This project currently develops multiple LangChain / LangGraph agents. Treat Codex sandbox observations as one execution scope, not as whole-machine truth. The sandbox user may not see the same WSL distributions, Docker CLI, PATH, or network namespace as the normal interactive user.
+- Notes: OpenAI-compatible production traffic now uses a unified gateway on `8004`; Docker Compose is managed in WSL Ubuntu. Treat Codex sandbox observations as one execution scope, not as whole-machine truth.
+
+## Current Unified Deployment (authoritative)
+
+- Windows root: `E:\My_sorcode\--创建智能体工作空间--`
+- Verified WSL root: `/mnt/e/My_sorcode/--创建智能体工作空间--`
+- Compose file/project: root `compose.yaml`, project `agent-workspace`
+- Platform Base URL: `http://<host>:8004/v1`
+- Only gateway publishes `8004:8004`; six worker services listen on Compose-internal `8080`.
+- Models: `batch-resume-review-agent`, `tender-format-review-agent`, `smart-resume-screening-agent`, `contract-review-agent`, `official-document-review-agent`, `langchain-knowledge-base-agent`.
+- Start locally without Docker: `python -m src.agent_gateway dev --port 8004`.
+- Build/start in WSL: `DOCKER_BUILDKIT=0 docker compose build gateway` then `docker compose up -d`.
+- The current Chinese Windows-mounted path triggers a BuildKit session-header ASCII error; retain `DOCKER_BUILDKIT=0` until moved to a pure ASCII Linux path.
+- Knowledge-base volume mounts `/app/data/knowledge_bases`; do not use `docker compose down -v` unless deletion is intended.
+- Old independent OpenAI ports 8006–8014 and the old knowledge-base Compose are no longer production entries. `resume-review` REST must use a non-8004 debug port.
 
 ## Observation Scope And Sandbox Effects
 
@@ -27,13 +41,13 @@ Facts in this file must name the observer. A failed command from the Codex sandb
 - Primary project environment: Windows
 - Windows path: `E:\My_sorcode\--创建智能体工作空间--`
 - WSL distro: `Ubuntu`
-- WSL path: Unknown until `wslpath -a 'E:\My_sorcode\--创建智能体工作空间--'` is verified from `Ubuntu`
+- WSL path: `/mnt/e/My_sorcode/--创建智能体工作空间--`
 - Remote path: None configured
 - Path conversion command: `wsl.exe -d Ubuntu -- wslpath -a 'E:\My_sorcode\--创建智能体工作空间--'`
 
 | Purpose | Windows path | WSL/Linux path | Container path | Notes |
 | --- | --- | --- | --- | --- |
-| Project root | `E:\My_sorcode\--创建智能体工作空间--` | Unknown until actual WSL distro access is available | Usually project-specific; do not assume | Verify path before running mutating commands through WSL or Docker. |
+| Project root | `E:\My_sorcode\--创建智能体工作空间--` | `/mnt/e/My_sorcode/--创建智能体工作空间--` | `/app` | Verified during T-036 Compose build and runtime validation. |
 | Temporary outputs | `E:\My_sorcode\--创建智能体工作空间--\临时文件` | Unknown | Project-specific | Runtime reports and local logs are intentionally ignored by git. |
 | Secrets | `E:\My_sorcode\--创建智能体工作空间--\.env.local` and `secrets\` | Unknown | Project-specific | Store only variable names in docs; do not copy values into environment ledgers. |
 
@@ -46,11 +60,12 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Install/update dependencies | Windows PowerShell | Project root | `conda env update -f environment.yml --prune` | `conda activate langchain`; `python -c "import langchain, langgraph"` |
 | Start tender format review API | Windows PowerShell | Project root | `uvicorn src.agents.tender_format_review.api:app --reload --port 8001` | `Invoke-RestMethod http://127.0.0.1:8001/docs` or dry-run `/review` |
 | Start tender OpenAI-compatible API | Windows PowerShell | Project root | `uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0 --port 8007` | `GET http://127.0.0.1:8007/v1/models` |
-| Start resume review API | Windows PowerShell | Project root | `uvicorn src.agents.resume_review.api:app --reload --port 8004` | Dry-run `/review` with a local text resume |
+| Start unified gateway | Windows PowerShell | Project root | `python -m src.agent_gateway dev --port 8004` | `GET http://127.0.0.1:8004/v1/models` |
+| Start resume review API | Windows PowerShell | Project root | `uvicorn src.agents.resume_review.api:app --reload --port 18004` | Dry-run `/review` with a local text resume; do not use gateway port 8004 |
 | Start batch resume API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review.api:app --reload --port 8006` | Dry-run `/review` with sample resume paths |
 | Start batch resume LLM API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006` | `GET http://127.0.0.1:8006/v1/models`; do not run at same time as original batch API |
-| Start knowledge base API | Windows PowerShell | Project root | `uvicorn kb_api.main:app --app-dir src/agents/langchain_knowledge_base --host 0.0.0.0 --port 8008` | `Invoke-RestMethod http://127.0.0.1:8008/health` |
-| Start Docker Compose for knowledge base | WSL `Ubuntu` | WSL project root | `docker compose -f src/agents/langchain_knowledge_base/docker-compose.yml up --build` | `docker compose -f src/agents/langchain_knowledge_base/docker-compose.yml ps` from `Ubuntu` |
+| Start knowledge base worker for debugging | Windows PowerShell | Project root | `uvicorn src.agents.langchain_knowledge_base.openai_compatible_api:app --host 127.0.0.1 --port 18008` | `Invoke-RestMethod http://127.0.0.1:18008/health` |
+| Start unified Compose | WSL `Ubuntu` | `/mnt/e/My_sorcode/--创建智能体工作空间--` | `DOCKER_BUILDKIT=0 docker compose build gateway` then `docker compose up -d` | `docker compose ps`; only gateway publishes `8004` |
 | Run all agent tests | Windows PowerShell | Project root | `python -m pytest tests\agents -q` | Test result output |
 | Run focused tests | Windows PowerShell | Project root | `python -m pytest tests\agents\test_<agent>.py -q` | Test result output |
 | Run linters | Windows PowerShell | Project root | `ruff check .` | Ruff success |
@@ -62,7 +77,7 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Tender format review API | Windows | `127.0.0.1:8001` or configured host | Windows tools / local clients | `http://127.0.0.1:8001/review` | Dry-run `/review` | Original REST API. |
 | Tender MCP HTTP | Windows | `127.0.0.1:8002/mcp` | MCP clients | `http://127.0.0.1:8002/mcp` | MCP client call | Not a normal REST endpoint. |
 | Resume review HTTP MCP | Windows | `127.0.0.1:8003/mcp` | MCP clients | `http://127.0.0.1:8003/mcp` | MCP client call | Optional shared MCP mode. |
-| Resume review API | Windows | `127.0.0.1:8004` | Windows tools / local clients | `http://127.0.0.1:8004/review` | Dry-run `/review` | Original REST API. |
+| Unified agent gateway | WSL Docker / local supervisor | `0.0.0.0:8004` | FastGPT, Dify, local clients | `http://127.0.0.1:8004/v1/models` | Six healthy models | Only production public port. |
 | Batch resume MCP HTTP | Windows | `127.0.0.1:8005/mcp` | MCP clients | `http://127.0.0.1:8005/mcp` | MCP client call | Optional shared MCP mode. |
 | Batch resume API or LLM API | Windows | `127.0.0.1:8006` | Windows tools or bridged FastGPT/Dify | `http://127.0.0.1:8006/...` or relay URL | `/review` or `/v1/models` depending on entrypoint | Original API and LLM adapter share port; do not run together. |
 | Tender OpenAI-compatible API | Windows | `127.0.0.1:8007` | Dify/FastGPT custom model nodes | `http://127.0.0.1:8007/v1` | `/v1/models` | Supports streaming. |

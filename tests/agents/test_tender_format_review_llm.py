@@ -8,7 +8,7 @@ from src.agents.tender_format_review.openai_compatible_api import (
     ChatCompletionRequest,
     MODEL_ID,
     _extract_docx_inputs,
-    _remote_docx_request,
+    _temporary_minio_transport_mapping,
     app,
     parse_review_request,
 )
@@ -158,15 +158,19 @@ def test_parse_review_request_accepts_file_url_content_part() -> None:
     assert parsed.docx_input == "http://minio.example/tender.docx"
 
 
-def test_remote_docx_request_maps_current_fastgpt_minio_transport() -> None:
-    request = _remote_docx_request(
+def test_remote_docx_request_uses_configured_transport_override(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "AGENT_FILE_TRANSPORT_OVERRIDES",
+        '{"10.71.2.94:9000":"http://127.0.0.1:9002"}',
+    )
+    url, headers = _temporary_minio_transport_mapping(
         "http://10.71.2.94:9000/fastgpt-private/chat/id/%E6%8B%9B%E6%A0%87.docx"
         "?X-Amz-Signature=aaa&x-id=GetObject"
     )
 
-    assert request.full_url.startswith("http://127.0.0.1:9002/fastgpt-private")
-    assert request.full_url.endswith("?X-Amz-Signature=aaa&x-id=GetObject")
-    assert request.headers["Host"] == "10.71.2.94:9000"
+    assert url.startswith("http://127.0.0.1:9002/fastgpt-private")
+    assert url.endswith("?X-Amz-Signature=aaa&x-id=GetObject")
+    assert headers["Host"] == "10.71.2.94:9000"
 
 
 def test_chat_completions_stream_dry_run() -> None:

@@ -1,5 +1,15 @@
 # Run And Debug
 
+## 推荐统一入口
+
+OpenAI-compatible 智能体统一通过 `8004` 网关部署和接入，不再公开各智能体原有的 8006–8014 等端口：
+
+```powershell
+python -m src.agent_gateway dev --port 8004
+```
+
+FastGPT/Dify 使用 `http://<host>:8004/v1`，通过模型 ID 选择智能体。Docker Compose、模型列表、鉴权、远程附件、故障隔离和新知识库管理详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。后文中的独立 API/MCP 命令仅用于单智能体调试，不是生产部署入口。
+
 ## 激活环境
 
 ```powershell
@@ -67,138 +77,28 @@ src/agents/graph.py      # LangGraph 图定义
 src/config/settings.py   # 环境变量和模型配置
 ```
 
-## 知识库智能体
+## 知识库智能体（新架构）
 
-`langchain_knowledge_base` 是外部导入、现已纳入本工作区统一 Git 追踪的智能体。所有本地命令从工作区根目录执行：
+`langchain_knowledge_base` worker 复用工作区级 `src/knowledge_base/` 核心。旧 `kb_api`、Langflow、primary/secondary 配置和旧 Chroma 数据已删除且不迁移。
 
-```powershell
-cd E:\My_sorcode\--创建智能体工作空间--
-```
+关键变量包括 `KB_DATA_ROOT`、`KB_NAMESPACE`、`KB_DEFAULT_NAME`、`KB_CHAT_MODEL`、`KB_EMBEDDING_MODEL`、对应 API key/base URL、`KB_TOP_K` 和 `KB_MIN_RELEVANCE_SCORE`。知识库默认写入 `data/knowledge_bases/<namespace>/<name>/`。
 
-复制环境模板并在同目录 `.env` 填写本地真实配置：
+本地管理：
 
 ```powershell
-Copy-Item .env.example .env
+python -m src.knowledge_base documents-dir default
+python -m src.knowledge_base ingest default
+python -m src.knowledge_base retrieve default "检索问题"
+python -m src.knowledge_base list
 ```
 
-关键变量：
-
-- `KB_OPENAI_API_KEY`
-- `KB_OPENAI_BASE_URL`
-- `KB_CHAT_MODEL`
-- `KB_EMBEDDING_API_KEY`
-- `KB_EMBEDDING_BASE_URL`
-- `KB_EMBEDDING_MODEL`
-- `KB_CHROMA_PERSIST_DIR`
-
-本智能体使用 Chroma `PersistentClient` 本地持久化，不依赖独立 Chroma 服务。非 Docker 运行默认把向量库写到 `data/chroma/`；停止 API 不会清空该目录。
-
-聊天模型和 embedding 模型可以分开配置。当前推荐测试方式是 DeepSeek 负责问答，百炼/DashScope 负责 embedding：
-
-```text
-KB_OPENAI_BASE_URL=https://api.deepseek.com
-KB_CHAT_MODEL=deepseek-v4-flash
-KB_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-KB_EMBEDDING_MODEL=text-embedding-v4
-```
-
-本地启动 API：
+单独启动 worker 仅用于调试：
 
 ```powershell
-uvicorn kb_api.main:app --app-dir src/agents/langchain_knowledge_base --host 0.0.0.0 --port 8008
+uvicorn src.agents.langchain_knowledge_base.openai_compatible_api:app --host 127.0.0.1 --port 18008
 ```
 
-健康检查：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8008/health
-```
-
-把文档放到 `data/docs/` 后手动入库：
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8008/ingest
-```
-
-指定多知识库目录：
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8008/ingest `
-  -ContentType "application/json" `
-  -Body '{"knowledge_base":"secondary"}'
-```
-
-问答：
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8008/v1/chat/completions `
-  -ContentType "application/json" `
-  -Body '{"model":"langchain-knowledge-base-agent","messages":[{"role":"user","content":"What is the vector store?"}],"stream":false}' |
-  ConvertTo-Json -Depth 8
-```
-
-纯检索接口，不调用聊天模型生成答案，只返回证据片段和引用：
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8008/v1/retrieval `
-  -ContentType "application/json" `
-  -Body '{"question":"群众性活动要管什么","top_k":4}' |
-  ConvertTo-Json -Depth 8
-```
-
-指定知识库问答：
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8008/v1/chat/completions `
-  -ContentType "application/json" `
-  -Body '{"model":"langchain-knowledge-base-agent","messages":[{"role":"user","content":"What is the support policy?"}],"knowledge_base":"secondary","stream":false}' |
-  ConvertTo-Json -Depth 8
-```
-
-同一个 API 服务也作为 OpenAI-compatible 模型入口用于 Dify/FastGPT 自定义模型节点。平台配置：
-
-- Base URL: `http://<服务地址>:8008/v1`
-- Model: `langchain-knowledge-base-agent`
-- Stream: 支持
-- API Key: 当前服务不校验，可填平台要求的占位值
-
-如果 FastGPT/Dify 在 WSL Docker 中运行，而知识库 API 运行在 Windows，可在 WSL 中使用中继：
-
-```bash
-setsid -f socat -d -d \
-  TCP-LISTEN:18008,bind=172.24.0.1,reuseaddr,fork \
-  TCP:127.0.0.1:8008 \
-  </dev/null >/tmp/windows-kb-api-relay-18008.log 2>&1
-```
-
-平台 Base URL 填 `http://172.24.0.1:18008/v1`。
-
-测试和评测：
-
-```powershell
-python -m compileall kb_api evals
-python -m pytest -q
-python -m evals.run
-ruff check .
-```
-
-Docker Compose 运行：
-
-```powershell
-docker compose up --build
-```
-
-Compose 默认启动 `kb-api` 和 `langflow`，不启动单独的 Chroma 容器。API 容器内的 `/app/data/chroma` 挂载到命名卷 `kb_chroma_data`。停止但保留向量库：
-
-```powershell
-docker compose down
-```
-
-只有确认要重建向量库时才删除 Compose 卷：
-
-```powershell
-docker compose down -v
-```
+worker 内部管理接口为 `GET /v1/knowledge-bases`、`POST /v1/knowledge-bases/{name}/ingest` 和 `POST /v1/knowledge-bases/{name}/retrieval`。这些接口不由网关公开；平台问答统一使用 `http://<host>:8004/v1` 和模型 `langchain-knowledge-base-agent`。详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。
 
 ## 招标文件格式审查智能体
 
@@ -265,7 +165,7 @@ uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8007/v1`
+- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
 - Model: `tender-format-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -283,7 +183,7 @@ http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
 
 `招标文件` 也可以是服务端本地 `.docx` 路径。FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的第一个文件链接；平台自动生成的 `附件：` 列表和 OpenAI content parts 中的 `file_url.url` / `image_url.url` 也会被识别。远程 `.docx` 会临时下载后交给原 `review_tender_format` 服务层；可用 `TENDER_REVIEW_MAX_REMOTE_FILE_BYTES` 和 `TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS` 调整大小上限和超时。URL 必须能被智能体服务所在环境访问，MinIO 预签名 URL 不要使用该服务进程无法访问的 `localhost`。
 
-当前存在一处临时 MinIO 传输映射：FastGPT 生成的预签名 URL 为 `10.71.2.94:9000`，但 Windows 侧实际访问该实例需要走 `127.0.0.1:9002`。`src.agents.tender_format_review.openai_compatible_api` 会在读取远程 `.docx` 时把实际连接地址映射为 `127.0.0.1:9002`，同时保留原始 `Host: 10.71.2.94:9000` 和完整查询签名。该逻辑只用于这个具体地址，是临时兼容层；修好 FastGPT/MinIO 外部签名地址后应删除。
+特殊 MinIO 网络不再由招标智能体硬编码。需要签名 Host 与实际传输地址分离时配置共享的 `AGENT_REMOTE_TRANSPORT_OVERRIDES`；下载会保留原始 Host 和完整查询签名。修好 MinIO 外部签名地址后应删除该环境映射。
 
 ## 简历审查智能体
 
@@ -537,7 +437,7 @@ uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --po
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8014/v1`
+- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
 - Model: `contract-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -625,7 +525,7 @@ uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8013/v1`
+- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
 - Model: `official-document-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -730,7 +630,7 @@ uvicorn src.agents.smart_resume_screening.openai_compatible_api:app --host 0.0.0
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8012/v1`
+- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
 - Model: `smart-resume-screening-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -806,14 +706,14 @@ CLI、API 与 MCP 均接受 PDF、DOC、DOCX、MD、TXT。文本型文件优先�
 独立打包并交付：
 
 ```powershell
-python scripts\package_agent_standalone.py --agent batch_resume_review --output-dir dist
+python scripts\package_agent_standalone.py --agent batch_resume_review_llm --output-dir dist
 ```
 
 ZIP 内的 `README.md` 包含独立安装、CLI、API、stdio/HTTP MCP 使用说明；`mcp-config.example.json` 和 `mcp_client_example.py` 可直接改路径后使用。通用封装约定见 `docs/development/AGENT_STANDALONE_PACKAGING_GUIDE.md`。
 
 ## 批量简历 OpenAI-compatible 流式适配智能体
 
-`batch-resume-review-llm` 是从 `batch-resume-review` 复制隔离出来的新智能体，供 Dify/FastGPT 自定义 OpenAI-compatible LLM 节点调用。它和原智能体沿用相同端口，不要同时启动。
+`batch-resume-review-llm` 是批量简历唯一业务实现，供 Dify/FastGPT 自定义 OpenAI-compatible LLM 节点调用。旧 `batch-resume-review` 包只保留兼容转发。
 
 面向 FastGPT、Dify 等平台的人读版接入说明见 `docs/development/OPENAI_COMPATIBLE_LLM_PLATFORM_INTEGRATION.md`。
 
@@ -825,7 +725,7 @@ uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8006/v1`
+- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
 - Model: `batch-resume-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值

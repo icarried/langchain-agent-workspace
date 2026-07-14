@@ -2,6 +2,21 @@
 
 本文面向使用 FastGPT、Dify 等智能体平台的人，说明如何把一个业务智能体伪装成 OpenAI-compatible LLM，让平台通过“模型 / LLM / AI 对话”节点调用，并把文件链接、岗位要求、业务输入等内容注入给智能体。
 
+## 当前统一入口
+
+生产和平台接入不再分别启动各智能体端口。统一配置为：
+
+```text
+Base URL: http://<服务可访问地址>:8004/v1
+Model: <模型 ID>
+API Key: AGENT_GATEWAY_API_KEY；未启用鉴权时可填占位值
+Stream: 开启
+```
+
+模型通过 `GET /v1/models` 动态发现；该接口只列出健康 worker。当前模型为 `batch-resume-review-agent`、`tender-format-review-agent`、`smart-resume-screening-agent`、`contract-review-agent`、`official-document-review-agent` 和 `langchain-knowledge-base-agent`。完整部署与运维说明见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。
+
+下文保留单个包装器的协议和排错示例。涉及 `8006` 等独立端口的命令仅用于本地调试，不应作为生产或平台配置。
+
 ## 适用场景
 
 当智能体执行时间较长、需要读取文件、需要流式返回进度和最终报告时，优先考虑 OpenAI-compatible LLM 包装方式。
@@ -20,7 +35,7 @@
 - 平台的 LLM 节点不透传流式输出。
 - 业务必须使用 multipart/base64 文件上传，而不是文件链接。
 
-## 服务端启动
+## 单 worker 调试启动
 
 以 `batch-resume-review-llm` 为例，启动 OpenAI-compatible 服务：
 
@@ -55,7 +70,7 @@ uvicorn src.agents.batch_resume_review_llm.api:app --host 0.0.0.0 --port 8006
 在 FastGPT / Dify 中新增自定义 OpenAI-compatible 模型时，通常填写：
 
 ```text
-Base URL: http://<服务可访问地址>:8006/v1
+Base URL: http://<服务可访问地址>:8004/v1
 Model: batch-resume-review-agent
 API Key: 任意占位值，除非服务端额外启用了鉴权
 Stream: 开启

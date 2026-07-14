@@ -10,8 +10,9 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
+from src.agents.openai_compatible import OpenAIChatCompletionRequest, OpenAIChatMessage
 from src.agents.openai_compatible_inputs import (
     dedupe,
     extract_json_array_paths,
@@ -24,27 +25,19 @@ from src.agents.openai_compatible_inputs import (
     starts_section,
     strip_section_label,
 )
+from src.agents.remote_files import materialize_sources
 
 from .service import screen_resumes
 
 MODEL_ID = "smart-resume-screening-agent"
 
 
-class ChatMessage(BaseModel):
-    role: str
-    content: Any
+class ChatMessage(OpenAIChatMessage):
+    pass
 
 
-class ChatCompletionRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class ChatCompletionRequest(OpenAIChatCompletionRequest):
     model: str = MODEL_ID
-    messages: list[ChatMessage] = Field(default_factory=list)
-    stream: bool = False
-    provider: str = "deepseek"
-    review_model: str | None = None
-    dry_run: bool = False
-    thinking: bool = True
 
 
 class ParsedScreeningRequest(BaseModel):
@@ -219,13 +212,18 @@ def _run_screening_worker(
 
 
 def _run_screening(screening_request: ParsedScreeningRequest) -> dict[str, Any]:
-    return screen_resumes(
+    with materialize_sources(
         screening_request.resume_paths,
-        job_description_text=screening_request.job_description_text,
-        provider=screening_request.provider,
-        model=screening_request.review_model,
-        dry_run=screening_request.dry_run,
-    )
+        allowed_suffixes={".docx", ".pdf", ".txt", ".md"},
+        prefix="smart-resume-screening-",
+    ) as paths:
+        return screen_resumes(
+            paths,
+            job_description_text=screening_request.job_description_text,
+            provider=screening_request.provider,
+            model=screening_request.review_model,
+            dry_run=screening_request.dry_run,
+        )
 
 
 def _chat_completion_response(model: str, content: str, *, created: int | None = None) -> JSONResponse:

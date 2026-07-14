@@ -32,6 +32,7 @@ runs/
 artifacts/
 dist/
 tmp/
+data/knowledge_bases/
 
 # other
 临时文件/

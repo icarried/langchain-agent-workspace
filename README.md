@@ -11,6 +11,7 @@
 5. 拆解和推进任务时维护 [.agents/tasks/TASK_BOARD.md](./.agents/tasks/TASK_BOARD.md)。
 6. 遇到问题时记录到 [docs/operations/PROBLEM_LOG.md](./docs/operations/PROBLEM_LOG.md)。
 7. 新增或查找智能体时维护 [docs/workspace/AGENT_REGISTRY.md](./docs/workspace/AGENT_REGISTRY.md)。
+8. 部署或接入统一 OpenAI-compatible 入口时读 [docs/development/AGENT_GATEWAY.md](./docs/development/AGENT_GATEWAY.md)。
 
 ## 当前状态
 
@@ -21,8 +22,9 @@
 - 本工作空间将承载多个智能体，新增智能体时应在任务台账和源码说明中登记。
 - 已建立多智能体登记表，用于记录每个智能体的用途、路径、入口和状态。
 - 已创建 `tender-format-review` 招标文件格式审查智能体，并沉淀 `.codex/skills/langchain-agent-builder/` 作为后续 LangChain 智能体创建 skill。
-- 已创建 `resume-review` 单份简历审查智能体和 `batch-resume-review` 批量简历筛选、评分与排序智能体。
-- 已收编外部导入的 `langchain_knowledge_base` 知识库智能体；它与其他智能体统一纳入本工作区的 Git 仓库追踪，默认使用 Chroma `PersistentClient` 本地持久化。
+- 已创建 `resume-review` 单份简历审查智能体和 `batch_resume_review_llm` 批量简历筛选、评分与排序智能体；旧 `batch_resume_review` 包仅保留兼容转发。
+- 已建立统一 OpenAI-compatible 网关：生产环境只发布 `8004`，按模型 ID 路由到六个相互隔离的 worker，本机开发可由单命令监管启动。
+- 已将知识库重做为工作区级 `src/knowledge_base/` 可复用核心，按 agent namespace 和知识库名称隔离 Chroma 数据，不兼容旧 primary/secondary 数据。
 
 ## 推荐目录
 

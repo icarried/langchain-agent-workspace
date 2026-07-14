@@ -11,8 +11,9 @@ from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
+from src.agents.openai_compatible import OpenAIChatCompletionRequest, OpenAIChatMessage
 from src.agents.openai_compatible_inputs import (
     dedupe,
     extract_json_array_paths,
@@ -24,27 +25,19 @@ from src.agents.openai_compatible_inputs import (
     starts_section,
     strip_section_label,
 )
+from src.agents.remote_files import materialize_sources
 
 from .service import review_contract
 
 MODEL_ID = "contract-review-agent"
 
 
-class ChatMessage(BaseModel):
-    role: str
-    content: Any
+class ChatMessage(OpenAIChatMessage):
+    pass
 
 
-class ChatCompletionRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class ChatCompletionRequest(OpenAIChatCompletionRequest):
     model: str = MODEL_ID
-    messages: list[ChatMessage] = Field(default_factory=list)
-    stream: bool = False
-    provider: str = "deepseek"
-    review_model: str | None = None
-    dry_run: bool = False
-    thinking: bool = True
 
 
 class ParsedContractRequest(BaseModel):
@@ -204,15 +197,20 @@ def _run_review_worker(review_request: ParsedContractRequest, events: queue.Queu
 
 
 def _run_review(review_request: ParsedContractRequest) -> dict[str, Any]:
-    return review_contract(
-        review_request.contract_path,
-        client_role=review_request.client_role,
-        contract_type=review_request.contract_type,
-        transaction_background=review_request.transaction_background,
-        provider=review_request.provider,
-        model=review_request.review_model,
-        dry_run=review_request.dry_run,
-    )
+    with materialize_sources(
+        [review_request.contract_path],
+        allowed_suffixes={".docx", ".pdf", ".txt", ".md"},
+        prefix="contract-review-",
+    ) as paths:
+        return review_contract(
+            paths[0],
+            client_role=review_request.client_role,
+            contract_type=review_request.contract_type,
+            transaction_background=review_request.transaction_background,
+            provider=review_request.provider,
+            model=review_request.review_model,
+            dry_run=review_request.dry_run,
+        )
 
 
 def _chat_completion_response(model: str, content: str, *, created: int | None = None) -> JSONResponse:

@@ -106,18 +106,17 @@ http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
 
 OpenAI content parts 中的 `file_url.url` 和 `image_url.url` 也会被识别为文件输入。URL 必须能被智能体服务所在环境访问；如果是 MinIO 预签名 URL，不要使用该服务进程、容器或 WSL 命名空间无法访问的 `localhost`。
 
-### 临时 MinIO 映射
+### 可配置 MinIO 传输映射
 
-当前本机 FastGPT/MinIO 部署存在临时网络映射问题：FastGPT 传给智能体的预签名 URL 使用 `10.71.2.94:9000`，但该 MinIO 实例在 Windows 上实际通过 `127.0.0.1:9002` 访问。因此 `openai_compatible_api.py::_temporary_minio_transport_mapping` 内置了临时映射：
+远程附件统一使用 `src.agents.remote_files`。如果签名 URL 的 Host 与实际传输地址不同，通过 `AGENT_REMOTE_TRANSPORT_OVERRIDES` 配置映射；智能体不再内置特定 IP/端口：
 
 ```text
-签名 URL / Host: 10.71.2.94:9000
-实际连接地址: 127.0.0.1:9002
+AGENT_REMOTE_TRANSPORT_OVERRIDES={"minio.signed.example:9000":"http://minio-transport:9000"}
 ```
 
-这个兼容层只改变 TCP 传输目标，不改原始 URL 的查询签名，并保留 HTTP `Host: 10.71.2.94:9000`。不要直接把 URL 文本中的 `:9000` 替换成 `:9002`，因为 MinIO/S3 的 AWS V4 签名通常包含 Host，直接改 URL 会导致签名校验失败。
+这个兼容层只改变 TCP 传输目标，不改原始 URL 的查询签名，并保留原始 HTTP `Host`。不要直接替换 URL 文本中的端口，因为 MinIO/S3 的 AWS V4 签名通常包含 Host。
 
-这是临时解决办法。长期应修正 FastGPT 的 MinIO 外部访问/签名地址，让新生成的预签名 URL 直接指向实际可达地址或统一反向代理域名；验证通过后应删除该映射函数中的硬编码关系和对应测试。
+长期应让新生成的预签名 URL 直接指向实际可达地址或统一反向代理域名，避免依赖传输映射。
 
 连通性测试可以发送普通 `hello`，服务会返回 readiness 文本而不是 400。正式审查建议先传 `dry_run=true` 验证解析和流式输出，再去掉 dry-run 调用模型。
 

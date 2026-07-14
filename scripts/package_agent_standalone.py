@@ -15,7 +15,9 @@ from typing import Any
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 AGENTS_ROOT = WORKSPACE_ROOT / "src" / "agents"
-EXTERNAL_IMPORT_PATTERN = re.compile(r"^\s*(?:from|import)\s+src(?:\.|\s|$)", re.MULTILINE)
+EXTERNAL_IMPORT_PATTERN = re.compile(
+    r"^\s*(?:from|import)\s+src(?:\.|\s|$)", re.MULTILINE
+)
 
 
 def _load_manifest(agent_dir: Path) -> dict[str, Any]:
@@ -25,12 +27,22 @@ def _load_manifest(agent_dir: Path) -> dict[str, Any]:
     return json.loads(manifest_path.read_text(encoding="utf-8"))
 
 
-def _validate_agent(agent_dir: Path) -> None:
+def _validate_agent(agent_dir: Path, manifest: dict[str, Any]) -> None:
+    vendored_sources = set(manifest.get("workspace_files", {}))
     violations: list[str] = []
     for source_path in agent_dir.rglob("*.py"):
         if "standalone" in source_path.parts or "__pycache__" in source_path.parts:
             continue
-        if EXTERNAL_IMPORT_PATTERN.search(source_path.read_text(encoding="utf-8")):
+        source = source_path.read_text(encoding="utf-8")
+        if not EXTERNAL_IMPORT_PATTERN.search(source):
+            continue
+        imported_modules = re.findall(r"src\.agents\.([A-Za-z0-9_]+)", source)
+        missing = [
+            module
+            for module in imported_modules
+            if f"src/agents/{module}.py" not in vendored_sources
+        ]
+        if missing or not imported_modules:
             violations.append(str(source_path.relative_to(agent_dir)))
     if violations:
         joined = ", ".join(sorted(violations))
@@ -97,6 +109,20 @@ def _copy_standalone_files(agent_dir: Path, bundle_root: Path) -> None:
             shutil.copy2(source_path, target_path)
 
 
+def _copy_workspace_files(
+    workspace_root: Path, bundle_root: Path, manifest: dict[str, Any]
+) -> None:
+    for source_name, destination_name in manifest.get("workspace_files", {}).items():
+        source_path = (workspace_root / source_name).resolve()
+        if not source_path.is_relative_to(workspace_root) or not source_path.is_file():
+            raise FileNotFoundError(f"共享打包文件不存在或越界: {source_name}")
+        destination_path = (bundle_root / destination_name).resolve()
+        if not destination_path.is_relative_to(bundle_root):
+            raise ValueError(f"共享打包目标越界: {destination_name}")
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination_path)
+
+
 def _write_checksums(bundle_root: Path, manifest: dict[str, Any]) -> None:
     files: dict[str, str] = {}
     for file_path in sorted(path for path in bundle_root.rglob("*") if path.is_file()):
@@ -130,7 +156,7 @@ def build_bundle(
         raise FileNotFoundError(f"智能体目录不存在: {agent_dir}")
 
     manifest = _load_manifest(agent_dir)
-    _validate_agent(agent_dir)
+    _validate_agent(agent_dir, manifest)
     package = manifest["package_name"]
     archive_stem = f"{manifest['distribution_name']}-{manifest['version']}"
     resolved_output_dir = Path(output_dir)
@@ -145,6 +171,7 @@ def build_bundle(
         package_dir.parent.mkdir(parents=True)
         _copy_agent_source(agent_dir, package_dir)
         _copy_standalone_files(agent_dir, bundle_root)
+        _copy_workspace_files(root, bundle_root, manifest)
         (bundle_root / "pyproject.toml").write_text(
             _render_pyproject(manifest), encoding="utf-8"
         )
@@ -159,7 +186,9 @@ def build_bundle(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="打包可脱离工作区运行的智能体")
-    parser.add_argument("--agent", default="batch_resume_review", help="src/agents 下的包名")
+    parser.add_argument(
+        "--agent", default="batch_resume_review_llm", help="src/agents 下的包名"
+    )
     parser.add_argument("--output-dir", default="dist", help="ZIP 输出目录")
     args = parser.parse_args()
     archive_path = build_bundle(args.agent, args.output_dir)

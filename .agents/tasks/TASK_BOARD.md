@@ -9,6 +9,31 @@
 
 ## 当前任务
 
+### T-036 建立多智能体 OpenAI-compatible 统一网关
+
+- 状态: Done
+- 目标: 以 `8004` 为唯一对外端口，按 OpenAI 请求中的模型名路由到隔离部署的智能体，并重做可复用、按命名空间隔离的知识库能力。
+- 验收标准:
+  - `GET /v1/models` 仅列出健康模型，`POST /v1/chat/completions` 支持非流式和 SSE 透传。
+  - 生产 Compose 只发布网关 `8004`，各 worker 使用内部 `8080`，单个 worker 停止不影响网关和其他模型。
+  - 本机开发可通过一个命令启动、监管和重启所选 worker，无需手工维护端口。
+  - `batch_resume_review_llm` 成为批量简历唯一业务实现，旧包名只保留兼容转发。
+  - 知识库移除 primary/secondary 和独立项目残留，按 agent namespace 与 knowledge-base name 隔离数据。
+  - 现有 OpenAI-compatible 回归、新网关、知识库、附件安全和 Compose 配置验证通过。
+- 执行计划:
+  - 实现声明式模型注册、健康状态、鉴权和流式反向代理。
+  - 实现跨平台开发监管器和 Linux Docker Compose 部署。
+  - 收敛共享 OpenAI/附件能力与批量简历重复实现。
+  - 破坏性重做知识库核心、适配器和测试。
+  - 更新登记表、运行手册、平台接入、依赖、决策和环境账本。
+- 验证:
+  - 网关、监管器、新知识库、共享附件及六个包装器定向测试共 96 项通过。
+  - 正式 `tests/` 全量 146 项通过，包含网关、知识库、附件、六个包装器、参考数据和 canonical 独立打包。
+  - Linux 镜像构建成功，`docker compose config --quiet` 成功，宿主机只发布 `8004`，六个 worker 健康。
+  - 故障隔离脚本验证停止 `contract-review` 后模型列表从 6 降为 5、其他模型可用，恢复后重新为 6。
+  - `ruff check .` 全量通过；最终 Compose 状态显示六个 worker 全部 healthy，`/v1/models` 返回六个模型。
+- 最后更新: 2026-07-14（完成）
+
 ### T-035 将知识库智能体纳入工作区统一 Git 追踪
 
 - 状态: Done
