@@ -1,5 +1,17 @@
 # contract-review
 
+## 统一平台入口
+
+生产环境和 Dify/FastGPT 使用统一网关：
+
+```text
+Base URL: http://<可达网关地址>:8008/v1
+Model: contract-review-agent
+Stream: 开启
+```
+
+生产启用鉴权时发送 `Authorization: Bearer <AGENT_GATEWAY_API_KEY>`。Docker 调用方不能将 `127.0.0.1` 当作网关；当前 `ai-app-platform` backend 应使用 `http://172.27.0.1:8008/v1`，长期推荐共享网络 DNS `http://gateway:8008/v1`。详见 `docs/development/AGENT_GATEWAY.md`。
+
 `contract-review` 是根据 FastGPT 导出工作流“合同审查大师”的有效经验转化而来的 LangChain / LangGraph 智能体。它不照抄 FastGPT 节点，而是保留其中更适合复用的设计：表单化收集委托方角色、合同类型和交易背景，按六个维度并行审查，再生成评分评级和整改建议。
 
 ## 能力范围
@@ -56,6 +68,8 @@ Tool 名称为 `review_contract`，接收 `contract_base64`、`contract_filename
 
 ## OpenAI-compatible LLM
 
+以下命令只用于本地单 worker 调试：
+
 ```powershell
 uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --port 8014
 ```
@@ -73,7 +87,7 @@ uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --po
 输出要求：请输出合同审查报告。
 ```
 
-URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 URL，不要使用服务进程无法访问的 `localhost`。
+URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 URL，不要使用服务进程无法访问的 `localhost`。生产环境通过 `AGENT_REMOTE_ALLOWED_HOSTS`、`AGENT_REMOTE_MAX_BYTES`、`AGENT_REMOTE_TIMEOUT_SECONDS` 限制远程附件；签名 Host 与传输地址不一致时才配置 `AGENT_REMOTE_TRANSPORT_OVERRIDES`。
 
 ## 环境变量
 

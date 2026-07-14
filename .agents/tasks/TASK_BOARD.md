@@ -9,13 +9,62 @@
 
 ## 当前任务
 
+### T-039 将统一网关公共端口迁移至 8008
+
+- 状态: Done
+- 目标: 将统一 OpenAI-compatible 网关的代码默认值、Compose 发布、平台地址、运行手册和技能统一由 `8004` 迁移为 `8008`。
+- 验收标准:
+  - 网关开发/服务默认端口和 Compose 唯一公开端口均为 `8008`。
+  - 平台 backend 容器可以通过 `172.27.0.1:8008/v1` 获取模型列表。
+  - 当前运行文档、智能体 README、登记表、skills 和环境账本不再把 `8004` 作为当前统一入口。
+- 验证:
+  - `tests/agent_gateway` 10 项通过，`ruff check src/agent_gateway scripts/verify_agent_gateway_isolation.py` 通过。
+  - `docker compose config --quiet` 通过；已重建 gateway，宿主机发布 `8008:8008`，网关返回 6 个模型。
+  - `ai-app-platform-backend-1` 容器已通过 `http://172.27.0.1:8008/v1/models` 返回 6 个模型。
+  - 故障隔离脚本在 `8008` 验证通过：停止 worker 后模型数为 5、其他 worker 可调用、恢复后重新为 6。
+  - 旧网关端口 `8004` 的精确残留扫描为空，`git diff --check` 和相关 Ruff 通过。
+- 最后更新: 2026-07-14（完成）
+- 最后更新: 2026-07-14
+
+### T-038 同步全部智能体 README 的统一入口说明
+
+- 状态: Done
+- 目标: 让每个智能体 README 准确说明当前统一网关、模型 ID、独立调试入口、容器网络边界和知识库/兼容包例外。
+- 验收标准:
+  - 全部现存智能体目录 README 说明生产平台入口是否为当前统一网关端口，不再把旧独立 OpenAI 端口写成推荐配置。
+  - 未注册到网关的智能体明确说明现状和端口冲突。
+  - 共享附件、鉴权和容器内 `127.0.0.1` 的关键约束在文件型平台智能体 README 可见。
+  - 文档链接指向统一网关运行手册，且残留扫描通过。
+- 验证:
+  - 已更新 `batch_resume_review_llm`、`tender_format_review`、`smart_resume_screening`、`contract_review`、`official_document_review`、`langchain_knowledge_base` 和 `resume_review` 的 README。
+  - 残留扫描确认根智能体 README 不再把 8006–8014 作为生产 Base URL；唯一保留的 `8006` Base URL 位于脱离工作区的独立发行模板，已明确其不适用于工作区生产部署。
+  - `git diff --check` 通过。
+- 最后更新: 2026-07-14（完成）
+
+### T-037 更新统一网关与智能体创建 skills
+
+- 状态: Done
+- 目标: 将 T-036 的统一 OpenAI-compatible 网关、容器网络、共享附件和可复用知识库经验沉淀到现有 skills。
+- 验收标准:
+  - `openai-compatible-llm-wrapper` 覆盖 gateway 注册、健康/错误语义、共享附件、安全配置、Compose 与平台网络验证。
+  - `langchain-agent-builder` 覆盖新智能体加入统一网关、知识库 namespace 和验证流程。
+  - 两个 skill 的 `SKILL.md` 与 `agents/openai.yaml` 同步并通过 skill 校验。
+- 执行计划:
+  - 根据已验证的 Compose 和容器调用路径重写两个 skill 的部署与接入章节。
+  - 更新 UI 默认提示词，运行 skill 基础校验，并记录验证结果。
+- 验证:
+  - `quick_validate.py .codex\skills\openai-compatible-llm-wrapper` 输出 `Skill is valid!`。
+  - `quick_validate.py .codex\skills\langchain-agent-builder` 输出 `Skill is valid!`。
+  - 两个 `agents/openai.yaml` 已同步统一网关导向的默认提示词。
+- 最后更新: 2026-07-14（完成）
+
 ### T-036 建立多智能体 OpenAI-compatible 统一网关
 
 - 状态: Done
-- 目标: 以 `8004` 为唯一对外端口，按 OpenAI 请求中的模型名路由到隔离部署的智能体，并重做可复用、按命名空间隔离的知识库能力。
+- 目标: 以统一公共端口为唯一对外入口，按 OpenAI 请求中的模型名路由到隔离部署的智能体，并重做可复用、按命名空间隔离的知识库能力。
 - 验收标准:
   - `GET /v1/models` 仅列出健康模型，`POST /v1/chat/completions` 支持非流式和 SSE 透传。
-  - 生产 Compose 只发布网关 `8004`，各 worker 使用内部 `8080`，单个 worker 停止不影响网关和其他模型。
+  - 生产 Compose 只发布网关公共端口，各 worker 使用内部 `8080`，单个 worker 停止不影响网关和其他模型。
   - 本机开发可通过一个命令启动、监管和重启所选 worker，无需手工维护端口。
   - `batch_resume_review_llm` 成为批量简历唯一业务实现，旧包名只保留兼容转发。
   - 知识库移除 primary/secondary 和独立项目残留，按 agent namespace 与 knowledge-base name 隔离数据。

@@ -2,6 +2,8 @@
 
 本目录是一套可脱离原多智能体工作区安装运行的批量简历审查 LLM 适配器。它保留批量简历筛选、评分、排序和 MCP 能力，并额外提供 OpenAI-compatible `/v1/chat/completions` 流式接口，便于 Dify/FastGPT 作为自定义模型调用。
 
+本说明只适用于已打包、脱离工作区运行的 ZIP，因此示例使用独立 `8006` 端口。工作区生产部署请不要使用该端口，统一改用 `http://<host>:8008/v1`、模型 `batch-resume-review-agent`，并参阅根目录 `docs/development/AGENT_GATEWAY.md`。
+
 ## 安装
 
 ```powershell

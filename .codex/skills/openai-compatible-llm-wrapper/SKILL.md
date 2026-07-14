@@ -1,50 +1,53 @@
 ---
 name: openai-compatible-llm-wrapper
-description: Wrap an existing agent API or LangChain/LangGraph workflow as an OpenAI-compatible LLM endpoint for Dify, FastGPT, or similar agent platforms. Use when a slow or file-processing agent should be called through an LLM/model node, support /v1/models and /v1/chat/completions, stream SSE chunks, accept prompt-injected file links such as FastGPT array string URLs, or troubleshoot custom OpenAI-compatible provider integration.
+description: Wrap an existing workspace agent as a worker behind the unified OpenAI-compatible gateway for Dify, FastGPT, or similar platforms. Use when adding or changing chat completions, SSE, model registration, file attachments, gateway health routing, Docker Compose deployment, or container-to-gateway connectivity.
 ---
 
-# OpenAI-compatible LLM Wrapper
+# OpenAI-compatible LLM Worker
 
-Use this skill to expose an agent as a model-like service instead of a normal REST tool. This is most useful when Dify/FastGPT workflow HTTP nodes time out or cannot stream intermediate output, but their LLM/model nodes can call custom OpenAI-compatible providers.
+Expose each platform-facing agent as a worker, not as another public port. The workspace publishes one gateway on `8008`; callers choose the worker with the OpenAI `model` field.
 
-## Choose The Entry
+## Worker Contract
 
-- Keep the original API unchanged when it already works. Add a separate wrapper module or copied agent when production behavior must stay stable.
-- Use an OpenAI-compatible wrapper for platform LLM nodes: `GET /v1/models` and `POST /v1/chat/completions`.
-- Keep REST `/review` or equivalent for direct API callers and tests.
-- Use background jobs only for system integrations that can poll; avoid forcing Dify/FastGPT conversation workflows to poll unless the platform cannot stream custom models.
+- Keep the original CLI/API/MCP service and business layer intact. Add a thin `openai_compatible_api.py`; do not copy an agent package merely for deployment isolation.
+- Implement `GET /health`, `GET /v1/models`, and `POST /v1/chat/completions` in the worker.
+- Use a stable model ID and validate it in the worker request.
+- Reuse `src/agents/openai_compatible.py` for permissive request/message models and `src/agents/openai_compatible_inputs.py` for content parts and labeled prompt parsing.
+- For non-streaming, return normal Chat Completions with final output in `choices[0].message.content`. For streaming, send `chat.completion.chunk` SSE events and terminate with `data: [DONE]`.
+- Return a 200 readiness answer for generic platform probes lacking business input. Do not expose internal stack traces; streaming business failures should be readable assistant text.
+- Put progress only in `delta.reasoning_content` when `thinking=true`; it must be execution status, never hidden reasoning. Send final output in `delta.content`.
 
-## Minimal API Contract
+The gateway owns aggregation semantics:
 
-Implement:
+- Unknown model: `404 model_not_found`.
+- Registered but unhealthy model: `503 model_unavailable`.
+- `GET /v1/models`: healthy workers only.
+- `GET /health`: gateway and worker status without secrets.
+
+Do not duplicate these rules in a worker.
+
+## Gateway Registration And Deployment
+
+1. Add the stable model ID, module and worker URL to `config/agent_gateway.json`.
+2. Add a dedicated root `compose.yaml` service that listens only on internal `8080`, with healthcheck, resource boundary and `restart: unless-stopped`. Never publish a worker port.
+3. Confirm the worker's `/v1/models` reports the same model ID as the registration.
+4. For local development, run `python -m src.agent_gateway dev --port 8008 --models <model-id>`; the supervisor chooses loopback worker ports and restarts failed workers with bounded backoff.
+5. For production, run root Compose. Only gateway publishes `8008:8008`.
+
+Platform configuration:
 
 ```text
-GET  /health
-GET  /v1/models
-POST /v1/chat/completions
+Base URL: http://<reachable-host>:8008/v1
+Model: <registered-model-id>
+API Key: AGENT_GATEWAY_API_KEY when enabled; otherwise a platform placeholder
+Stream: enabled
 ```
 
-Use a stable model id, for example `batch-resume-review-agent`. For `/v1/chat/completions`, accept common OpenAI fields and ignore unknown extras:
+Enable `AGENT_GATEWAY_API_KEY` in production and use a Bearer token. Never record its value.
 
-```json
-{
-  "model": "agent-model-id",
-  "messages": [{"role": "user", "content": "..."}],
-  "stream": true
-}
-```
+## Prompt And File Inputs
 
-For `stream=false`, return standard Chat Completions shape with the final report in `choices[0].message.content`. For `stream=true`, return `text/event-stream` with `chat.completion.chunk` JSON lines and finish with:
-
-```text
-data: [DONE]
-```
-
-Do not return HTTP 400 for generic provider test prompts. If the message lacks business inputs, return 200 with a short readiness message and the required prompt format. Reserve 400 for malformed protocol payloads that the platform cannot recover from.
-
-## Prompt Input Pattern
-
-Ask users to pass business inputs through the LLM prompt in labeled sections:
+Use explicit business labels, for example:
 
 ```text
 岗位要求：
@@ -53,94 +56,51 @@ Ask users to pass business inputs through the LLM prompt in labeled sections:
 简历文件：
 {{file_links}}
 
-输出要求：
-请输出批量简历审查与排序报告。
+输出要求：请输出批量简历审查与排序报告。
 ```
 
-Support these file link renderings after the file section label:
+Accept text strings, OpenAI content parts, FastGPT JSON `array<string>`, multi-line paths/URLs and platform-generated `附件：` blocks. Extract `file_url.url`, `image_url.url` and top-level `url` parts; merge and de-duplicate without rewriting signed query strings. For resume workers, when files exist but no explicit JD label exists, use text before the first file/attachment/output label as the fallback JD.
+
+## Shared Attachment Transport
+
+Use `src/agents/remote_files.py` for remote input. It supports local mounted paths, HTTP(S), signed S3/MinIO URLs, extension limits, host allowlists, size/timeout limits and temporary-file cleanup.
+
+Configure rather than hardcode environment-specific transport:
+
+- `AGENT_REMOTE_ALLOWED_HOSTS`
+- `AGENT_REMOTE_MAX_BYTES`
+- `AGENT_REMOTE_TIMEOUT_SECONDS`
+- `AGENT_REMOTE_TRANSPORT_OVERRIDES`
+
+Use a transport override only for a controlled signed-host mismatch. Preserve the original Host and query signature; never rewrite the URL text or log a complete signed URL.
+
+## Platform Container Networking
+
+`127.0.0.1` inside a platform container is that container, not the gateway. Verify connectivity from the actual caller container before saving a provider configuration.
+
+The current `ai-app-platform` backend reaches the gateway's published port at `http://172.27.0.1:8008/v1`; its bridge gateway can change when the network is recreated. For a durable same-host deployment, attach the platform backend and `agent-workspace_default` to a shared Docker network and use Compose DNS:
 
 ```text
-http://.../candidate-a.pdf
-http://.../candidate-b.docx
+http://gateway:8008/v1
 ```
 
-```json
-[
-  "http://.../candidate-a.pdf?X-Amz-Signature=...",
-  "http://.../candidate-b.docx?X-Amz-Signature=..."
-]
-```
-
-FastGPT commonly exposes file links as `array<string>` and may render them as a JSON array. Parse the section block as JSON first when it starts with `[`, then fall back to extracting URLs or one-path-per-line values. Preserve query strings exactly; MinIO/S3 signatures break if the URL is decoded, truncated, or reserialized incorrectly. Sanitize signed URLs before putting them in reports or logs.
-
-Also accept platform-generated attachment text blocks when users upload files through a model chat UI:
-
-```text
-附件：
-- candidate-a.pdf: http://.../candidate-a.pdf?X-Amz-Signature=...
-- candidate-b.docx: http://.../candidate-b.docx?X-Amz-Signature=...
-```
-
-When `messages[].content` is a list of OpenAI-style content parts, extract file URLs from `{"type":"file_url","file_url":{"url":"..."}}`, `{"type":"image_url","image_url":{"url":"..."}}`, and a top-level `{"url":"..."}` part when present. Merge those URLs with prompt-extracted paths and de-duplicate them without rewriting query strings.
-
-For resume-style agents that need both job requirements and uploaded files, keep explicit `岗位要求` / `JD` sections as the preferred protocol. If file inputs are already present but no explicit job section is found, use the text before the first file section label (`简历文件`, `简历路径`, `附件`) or `输出要求` as a fallback job description. Preserve Markdown in that fallback text.
-
-## Implementation Pattern
-
-1. Define Pydantic request models with `extra="allow"` so Dify/FastGPT-specific fields do not fail validation.
-2. Flatten `messages[].content` from strings and common list parts such as `{"type":"text","text":"..."}`.
-3. Extract labeled sections such as `岗位要求`, `简历文件`, and generic `附件`.
-4. Extract `file_url.url` and `image_url.url` from content parts and merge them into the file input list.
-5. For resume-style prompts, if file inputs exist but the job section is absent, treat the user text before the file section as the job description.
-6. If required business inputs are absent, return a readiness completion.
-7. If sections are present, build the original agent request and call the existing service function.
-8. For streaming, emit an immediate assistant chunk, progress text, periodic heartbeat text for long tasks, the final report, a stop chunk, and `[DONE]`.
-9. Surface business errors as assistant text in streaming mode when the caller is an LLM node; platform model calls often display HTTP errors poorly.
-
-When the platform supports think/reasoning displays, send non-final progress to `delta.reasoning_content` and the final answer/report to `delta.content`. Keep this to execution status and evidence-free process summaries; do not expose hidden chain-of-thought. Provide a request flag such as `thinking=false` to fall back to ordinary `content` progress for platforms that ignore reasoning fields.
-
-Keep the wrapper thin. The original agent should still own parsing files, calling OCR/model providers, ranking, and rendering reports.
-
-## Dify/FastGPT Integration
-
-Configure the platform custom provider as:
-
-```text
-Base URL: http://<reachable-host>:<port>/v1
-Model: <agent-model-id>
-API Key: any placeholder if the wrapper does not enforce auth
-Stream: enabled
-```
-
-Use the platform's LLM/AI conversation node, not a generic HTTP node, when the goal is to stream text into the chat UI. Put file links and other inputs into the node prompt using labeled sections.
-
-When FastGPT runs in Docker/WSL and the wrapper runs on Windows, `127.0.0.1` inside FastGPT is the container, not Windows. Use a verified reachable URL such as a WSL `socat` relay (`http://172.24.0.1:18006/v1`) or another host address reachable from the container.
-
-## Common Failures
-
-- `connect: connection refused`: the platform cannot reach the wrapper. Check whether the caller is in Docker/WSL; do not use `127.0.0.1` unless the wrapper runs in the same container.
-- `/health` works but `/v1/models` is 404: the wrong FastAPI app is running, usually the normal REST API instead of the OpenAI-compatible wrapper app.
-- Platform reports `bad response status code 400` during model testing: the wrapper rejected a generic test prompt. Return a readiness completion when business inputs are absent.
-- `POST /v1` returns 404: normal. Platforms should call `/v1/models` or `/v1/chat/completions`; Base URL should usually be `/v1`.
-- File URL 404 from MinIO: confirm the signed URL host/port maps to the actual MinIO instance. If using a relay, preserve the original signed `Host` when required by the existing loader.
+Do not assume `host.docker.internal` resolves in WSL Docker. Use a bridge-scoped relay only if the gateway actually runs outside Docker and direct routing cannot work.
 
 ## Validation
 
-Test at three layers:
+Run focused protocol and gateway tests, then test from the caller container namespace:
 
 ```powershell
-python -m pytest tests\agents\test_<agent>_llm.py -q
-ruff check src\agents\<agent>_llm tests\agents\test_<agent>_llm.py
+python -m pytest tests\agents\test_<agent>_llm.py tests\agent_gateway -q
+ruff check .
 ```
 
-Manual curl checks from the same network namespace as the platform:
-
-```bash
-curl http://<base>/health
-curl http://<base>/v1/models
-curl -H "Content-Type: application/json" \
+```sh
+curl --noproxy '*' http://<gateway>:8008/health
+curl --noproxy '*' http://<gateway>:8008/v1/models
+curl --noproxy '*' -H 'Content-Type: application/json' \
   -d '{"model":"agent-model-id","messages":[{"role":"user","content":"hello"}],"stream":false}' \
-  http://<base>/v1/chat/completions
+  http://<gateway>:8008/v1/chat/completions
 ```
 
-Then test a real dry-run prompt with file links rendered exactly as the platform sends them.
+Also validate a real dry-run prompt with platform-rendered file links. For Compose changes, run `docker compose config --quiet`, confirm only `8008` is published, stop one worker and verify its model disappears while other models remain usable, then verify it returns after restart.

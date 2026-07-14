@@ -21,4 +21,4 @@ RUN mkdir -p /app/data/knowledge_bases /app/tmp \
 USER agent
 EXPOSE 8080
 
-CMD ["python", "-m", "src.agent_gateway", "serve", "--host", "0.0.0.0", "--port", "8004"]
+CMD ["python", "-m", "src.agent_gateway", "serve", "--host", "0.0.0.0", "--port", "8008"]

@@ -1,5 +1,17 @@
 # official-document-review
 
+## 统一平台入口
+
+生产环境和 Dify/FastGPT 使用统一网关：
+
+```text
+Base URL: http://<可达网关地址>:8008/v1
+Model: official-document-review-agent
+Stream: 开启
+```
+
+生产启用鉴权时发送 `Authorization: Bearer <AGENT_GATEWAY_API_KEY>`。Docker 调用方中的 `127.0.0.1` 不是网关；当前 `ai-app-platform` backend 应使用 `http://172.27.0.1:8008/v1`，长期推荐共享网络 DNS `http://gateway:8008/v1`。详见 `docs/development/AGENT_GATEWAY.md`。
+
 `official-document-review` 是根据 FastGPT 导出工作流“公文优化”的有效经验转化而来的 LangChain / LangGraph 智能体。它不照搬 FastGPT 的内网 HTTP 检测节点，而是保留“文件检测 -> 检测结果美化输出”的分层设计，在本工作区实现可测试、可本地运行的公文格式检查与优化建议。
 
 ## 能力范围
@@ -54,6 +66,8 @@ Tool 名称为 `review_official_document`，接收 `document_base64`、`document
 
 ## OpenAI-compatible LLM
 
+以下命令只用于本地单 worker 调试：
+
 ```powershell
 uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0.0.0 --port 8013
 ```
@@ -69,7 +83,7 @@ uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0
 输出要求：请输出公文格式检查报告。
 ```
 
-URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 URL，不要使用服务进程无法访问的 `localhost`。
+URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 URL，不要使用服务进程无法访问的 `localhost`。生产环境通过 `AGENT_REMOTE_ALLOWED_HOSTS`、`AGENT_REMOTE_MAX_BYTES`、`AGENT_REMOTE_TIMEOUT_SECONDS` 限制远程附件；签名 Host 与传输地址不一致时才配置 `AGENT_REMOTE_TRANSPORT_OVERRIDES`。
 
 ## 环境变量
 

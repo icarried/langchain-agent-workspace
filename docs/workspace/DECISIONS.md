@@ -144,9 +144,9 @@
 
 ## 2026-07-14 - 统一网关路由到隔离 worker
 
-- 决策: OpenAI-compatible 生产入口统一为 `8004`，网关按 `model` 路由到独立 worker；worker 在 Compose 内统一监听 `8080`，不发布宿主机端口。本机开发使用同一注册表和子进程监管器。
+- 决策: OpenAI-compatible 生产入口统一为 `8008`，网关按 `model` 路由到独立 worker；worker 在 Compose 内统一监听 `8080`，不发布宿主机端口。本机开发使用同一注册表和子进程监管器。
 - 原因: 每个智能体占用独立对外端口不利于扩容，也使平台配置和故障处理分散。网关与 worker 分进程/容器可在保持单入口的同时隔离故障。
-- 影响: FastGPT/Dify 统一配置 `http://<host>:8004/v1`；`GET /v1/models` 只返回健康模型。原独立 OpenAI 端口及 REST/MCP 源码仅用于调试，不进入生产 Compose。此决策覆盖此前将 `8004` 分配给 `resume-review` REST API 的约定。
+- 影响: FastGPT/Dify 统一配置 `http://<host>:8008/v1`；`GET /v1/models` 只返回健康模型。原独立 OpenAI 端口及 REST/MCP 源码仅用于调试，不进入生产 Compose。此决策覆盖此前将 `8008` 分配给 `resume-review` REST API 的约定。
 
 ## 2026-07-14 - 批量简历业务实现收敛到 LLM 包
 

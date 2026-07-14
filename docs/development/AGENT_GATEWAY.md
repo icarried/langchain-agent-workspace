@@ -1,13 +1,13 @@
 # 多智能体统一网关
 
-统一网关是所有 OpenAI-compatible 智能体的推荐入口。对外只发布 `8004`，调用方通过请求体中的 `model` 选择智能体；各智能体 worker 独立运行，单个 worker 停止不会带崩网关或其他模型。
+统一网关是所有 OpenAI-compatible 智能体的推荐入口。对外只发布 `8008`，调用方通过请求体中的 `model` 选择智能体；各智能体 worker 独立运行，单个 worker 停止不会带崩网关或其他模型。
 
 ## 平台接入
 
 FastGPT、Dify 或其他 OpenAI-compatible 客户端统一配置：
 
 ```text
-Base URL: http://<host>:8004/v1
+Base URL: http://<host>:8008/v1
 API Key: <AGENT_GATEWAY_API_KEY；未启用鉴权时可填占位值>
 Stream: enabled
 ```
@@ -28,11 +28,11 @@ Stream: enabled
 ## 本机开发
 
 ```powershell
-python -m src.agent_gateway dev --port 8004
-python -m src.agent_gateway dev --port 8004 --models batch-resume-review-agent,contract-review-agent
+python -m src.agent_gateway dev --port 8008
+python -m src.agent_gateway dev --port 8008 --models batch-resume-review-agent,contract-review-agent
 ```
 
-启动器为 worker 自动选择回环端口，异常退出后按 1、2、5、10、30 秒上限退避重启，按 Ctrl+C 会清理全部子进程。旧 `resume-review` REST API 如需单独调试，必须显式选择非 `8004` 端口。
+启动器为 worker 自动选择回环端口，异常退出后按 1、2、5、10、30 秒上限退避重启，按 Ctrl+C 会清理全部子进程。旧 `resume-review` REST API 如需单独调试，必须显式选择非 `8008` 端口。
 
 ## Docker Compose 生产部署
 
@@ -50,7 +50,7 @@ wsl.exe -d Ubuntu -- bash -lc 'cd /mnt/e/My_sorcode/--创建智能体工作空�
 
 当前 Windows 挂载路径含中文时，BuildKit 会因会话共享键头包含非 ASCII 字符而失败，因此使用传统构建器；项目迁移到纯 ASCII Linux 路径后可重新验证 BuildKit。
 
-Compose 仅把 gateway 发布为 `8004:8004`；worker 只在 Compose 网络内监听 `8080`，并通过服务 DNS 寻址。停止服务使用 `docker compose down`。不要执行 `docker compose down -v`，除非明确要删除知识库持久化卷。
+Compose 仅把 gateway 发布为 `8008:8008`；worker 只在 Compose 网络内监听 `8080`，并通过服务 DNS 寻址。停止服务使用 `docker compose down`。不要执行 `docker compose down -v`，除非明确要删除知识库持久化卷。
 
 故障隔离验收：
 

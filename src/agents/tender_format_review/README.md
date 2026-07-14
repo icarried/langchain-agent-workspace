@@ -1,5 +1,17 @@
 # 招标文件格式审查智能体
 
+## 统一平台入口
+
+生产环境和 Dify/FastGPT 平台统一通过网关调用，不公开本智能体的独立 OpenAI 端口：
+
+```text
+Base URL: http://<可达网关地址>:8008/v1
+Model: tender-format-review-agent
+Stream: 开启
+```
+
+生产启用鉴权时使用 `Authorization: Bearer <AGENT_GATEWAY_API_KEY>`。调用方在 Docker 容器内时，`127.0.0.1` 指向调用方容器而不是网关；请从该容器验证可达地址。当前 `ai-app-platform` backend 应使用 `http://172.27.0.1:8008/v1`，但网络重建后应重新验证；长期建议使用共享网络 DNS `http://gateway:8008/v1`。完整部署说明见 `docs/development/AGENT_GATEWAY.md`。
+
 该智能体用于审查大型中文招标文件 `.docx` 的格式和跨章节一致性问题。它采用 LangGraph 工作流：
 
 1. 解析 docx 段落和表格。
@@ -67,7 +79,7 @@ result = review_tender_format("./临时文件/仅包含一行文字的文件.doc
 
 当 Dify/FastGPT 等平台的普通 HTTP 节点不适合长任务或流式输出时，可以把该智能体作为自定义 OpenAI-compatible LLM 使用。原 `/review` API、CLI 和 MCP 入口保持不变。
 
-启动服务：
+以下独立 worker 命令只用于本地协议调试，不进入生产 Compose：
 
 ```powershell
 uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0 --port 8007
@@ -77,10 +89,10 @@ uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0
 
 | 项 | 值 |
 | --- | --- |
-| Base URL | `http://<服务地址>:8007/v1` |
+| Base URL | `http://<可达网关地址>:8008/v1` |
 | Model | `tender-format-review-agent` |
 | Stream | 开启 |
-| API Key | 当前服务不校验，可填平台要求的占位值 |
+| API Key | `AGENT_GATEWAY_API_KEY`；未启用鉴权时可填平台占位值 |
 
 默认 `thinking=true`：文件接收、解析审查中、心跳等非最终输出会写入流式 chunk 的 `delta.reasoning_content`，最终审查报告写入 `delta.content`。如果平台不显示 think/reasoning 内容，可在请求中传 `"thinking": false`，让进度也走普通 `content`。
 
@@ -105,6 +117,8 @@ http://minio.example/bucket/待审招标文件.docx?X-Amz-Signature=...
 ```
 
 OpenAI content parts 中的 `file_url.url` 和 `image_url.url` 也会被识别为文件输入。URL 必须能被智能体服务所在环境访问；如果是 MinIO 预签名 URL，不要使用该服务进程、容器或 WSL 命名空间无法访问的 `localhost`。
+
+生产环境通过 `AGENT_REMOTE_ALLOWED_HOSTS`、`AGENT_REMOTE_MAX_BYTES` 和 `AGENT_REMOTE_TIMEOUT_SECONDS` 限制远程附件。仅在签名 Host 与实际传输地址不一致时设置 `AGENT_REMOTE_TRANSPORT_OVERRIDES`；不要修改签名 URL 或把完整签名写入日志。
 
 ### 可配置 MinIO 传输映射
 

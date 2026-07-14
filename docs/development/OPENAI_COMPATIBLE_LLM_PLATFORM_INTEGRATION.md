@@ -7,7 +7,7 @@
 生产和平台接入不再分别启动各智能体端口。统一配置为：
 
 ```text
-Base URL: http://<服务可访问地址>:8004/v1
+Base URL: http://<服务可访问地址>:8008/v1
 Model: <模型 ID>
 API Key: AGENT_GATEWAY_API_KEY；未启用鉴权时可填占位值
 Stream: 开启
@@ -70,7 +70,7 @@ uvicorn src.agents.batch_resume_review_llm.api:app --host 0.0.0.0 --port 8006
 在 FastGPT / Dify 中新增自定义 OpenAI-compatible 模型时，通常填写：
 
 ```text
-Base URL: http://<服务可访问地址>:8004/v1
+Base URL: http://<服务可访问地址>:8008/v1
 Model: batch-resume-review-agent
 API Key: 任意占位值，除非服务端额外启用了鉴权
 Stream: 开启

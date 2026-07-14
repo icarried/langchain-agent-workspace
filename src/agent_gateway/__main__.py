@@ -13,7 +13,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     dev = subparsers.add_parser("dev", help="start the gateway and supervised local workers")
-    dev.add_argument("--port", type=int, default=8004)
+    dev.add_argument("--port", type=int, default=8008)
     dev.add_argument(
         "--models",
         default="",
@@ -22,7 +22,7 @@ def main() -> int:
 
     serve = subparsers.add_parser("serve", help="start only the gateway for external workers")
     serve.add_argument("--host", default="0.0.0.0")
-    serve.add_argument("--port", type=int, default=8004)
+    serve.add_argument("--port", type=int, default=8008)
 
     args = parser.parse_args()
     if args.command == "serve":

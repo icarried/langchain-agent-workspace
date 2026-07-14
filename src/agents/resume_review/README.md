@@ -1,5 +1,9 @@
 # Resume Review Agent
 
+## 当前部署边界
+
+`resume-review` 目前仅提供 CLI、REST API 和 MCP，尚未注册为统一网关的 OpenAI-compatible 模型。统一网关保留宿主机端口 `8008`，因此单独调试 REST API 必须选择其他端口，例如 `18004`。若后续需要 Dify/FastGPT LLM 节点接入，应新增薄 `openai_compatible_api.py`、注册稳定模型 ID 并加入根 `compose.yaml` worker，而不是另行公开生产端口；详见 `docs/development/AGENT_GATEWAY.md`。
+
 `resume-review` 是人力部门简历审查智能体，运行时支持 DOCX、文本型 PDF 和 TXT 简历。它输出 Markdown 报告，覆盖基本条件与注入风险、筛选条件与学历时间线、专业条件与岗位匹配。
 
 `examples/` 下的 Markdown 文件只是便于维护和重复执行的测试夹具。MCP 调用协议不使用 Markdown：岗位要求通过 `job_description_text` 传入，简历以 DOCX/PDF/TXT 文件内容的 base64 传入。
@@ -62,7 +66,7 @@ python -m src.agents.resume_review review path\to\resume.txt `
 启动：
 
 ```powershell
-uvicorn src.agents.resume_review.api:app --reload --port 8004
+uvicorn src.agents.resume_review.api:app --reload --port 18004
 ```
 
 调用 dry-run：
@@ -70,7 +74,7 @@ uvicorn src.agents.resume_review.api:app --reload --port 8004
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Uri http://127.0.0.1:8004/review `
+  -Uri http://127.0.0.1:18004/review `
   -ContentType "application/json" `
   -Body '{"resume_path":"./临时文件/sample_resume.txt","job_description_text":"招聘 Python 后端工程师","dry_run":true}'
 ```

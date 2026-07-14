@@ -30,7 +30,7 @@ class DevelopmentSupervisor:
         self,
         registry: ModelRegistry,
         *,
-        gateway_port: int = 8004,
+        gateway_port: int = 8008,
         model_ids: list[str] | None = None,
         workspace_root: Path | None = None,
     ) -> None:

@@ -2,13 +2,13 @@
 
 ## 推荐统一入口
 
-OpenAI-compatible 智能体统一通过 `8004` 网关部署和接入，不再公开各智能体原有的 8006–8014 等端口：
+OpenAI-compatible 智能体统一通过 `8008` 网关部署和接入，不再公开各智能体原有的 8006–8014 等端口：
 
 ```powershell
-python -m src.agent_gateway dev --port 8004
+python -m src.agent_gateway dev --port 8008
 ```
 
-FastGPT/Dify 使用 `http://<host>:8004/v1`，通过模型 ID 选择智能体。Docker Compose、模型列表、鉴权、远程附件、故障隔离和新知识库管理详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。后文中的独立 API/MCP 命令仅用于单智能体调试，不是生产部署入口。
+FastGPT/Dify 使用 `http://<host>:8008/v1`，通过模型 ID 选择智能体。Docker Compose、模型列表、鉴权、远程附件、故障隔离和新知识库管理详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。后文中的独立 API/MCP 命令仅用于单智能体调试，不是生产部署入口。
 
 ## 激活环境
 
@@ -98,7 +98,7 @@ python -m src.knowledge_base list
 uvicorn src.agents.langchain_knowledge_base.openai_compatible_api:app --host 127.0.0.1 --port 18008
 ```
 
-worker 内部管理接口为 `GET /v1/knowledge-bases`、`POST /v1/knowledge-bases/{name}/ingest` 和 `POST /v1/knowledge-bases/{name}/retrieval`。这些接口不由网关公开；平台问答统一使用 `http://<host>:8004/v1` 和模型 `langchain-knowledge-base-agent`。详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。
+worker 内部管理接口为 `GET /v1/knowledge-bases`、`POST /v1/knowledge-bases/{name}/ingest` 和 `POST /v1/knowledge-bases/{name}/retrieval`。这些接口不由网关公开；平台问答统一使用 `http://<host>:8008/v1` 和模型 `langchain-knowledge-base-agent`。详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。
 
 ## 招标文件格式审查智能体
 
@@ -165,7 +165,7 @@ uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
+- Base URL: `http://<服务地址>:8008/v1`（生产统一网关）
 - Model: `tender-format-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -242,7 +242,7 @@ python -m src.agents.resume_review review `
 
 ```powershell
 conda activate langchain
-uvicorn src.agents.resume_review.api:app --reload --port 8004
+uvicorn src.agents.resume_review.api:app --reload --port 18004
 ```
 
 用文本简历测试 API dry-run：
@@ -250,7 +250,7 @@ uvicorn src.agents.resume_review.api:app --reload --port 8004
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Uri http://127.0.0.1:8004/review `
+  -Uri http://127.0.0.1:18004/review `
   -ContentType "application/json" `
   -Body '{"resume_path":"./临时文件/sample_resume.txt","job_description_text":"招聘 Python 后端工程师","dry_run":true}'
 ```
@@ -437,7 +437,7 @@ uvicorn src.agents.contract_review.openai_compatible_api:app --host 0.0.0.0 --po
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
+- Base URL: `http://<服务地址>:8008/v1`（生产统一网关）
 - Model: `contract-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -525,7 +525,7 @@ uvicorn src.agents.official_document_review.openai_compatible_api:app --host 0.0
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
+- Base URL: `http://<服务地址>:8008/v1`（生产统一网关）
 - Model: `official-document-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -630,7 +630,7 @@ uvicorn src.agents.smart_resume_screening.openai_compatible_api:app --host 0.0.0
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
+- Base URL: `http://<服务地址>:8008/v1`（生产统一网关）
 - Model: `smart-resume-screening-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值
@@ -725,7 +725,7 @@ uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.
 
 模型配置：
 
-- Base URL: `http://<服务地址>:8004/v1`（生产统一网关）
+- Base URL: `http://<服务地址>:8008/v1`（生产统一网关）
 - Model: `batch-resume-review-agent`
 - Stream: 开启
 - API Key: 当前服务不校验，可填平台要求的占位值

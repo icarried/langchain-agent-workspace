@@ -12,12 +12,14 @@
 
 ## 统一入口
 
-生产环境运行根目录 Compose，或本机运行 `python -m src.agent_gateway dev --port 8004`。平台统一配置：
+生产环境运行根目录 Compose，或本机运行 `python -m src.agent_gateway dev --port 8008`。平台统一配置：
 
-- Base URL: `http://<服务地址>:8004/v1`
+- Base URL: `http://<服务地址>:8008/v1`
 - Model: `batch-resume-review-agent`
 - API Key: `AGENT_GATEWAY_API_KEY`；未启用鉴权时可填占位值。
 - Stream: 开启。
+
+若平台调用方在 Docker 容器内，`127.0.0.1` 指向调用方容器而不是网关。当前 `ai-app-platform` backend 应使用 `http://172.27.0.1:8008/v1`；网络重建后需要重新验证，长期推荐共享网络 DNS `http://gateway:8008/v1`。完整部署、健康检查和故障隔离说明见 `docs/development/AGENT_GATEWAY.md`。
 
 以下命令只用于单 worker 调试：
 
@@ -41,7 +43,7 @@ http://minio.example/bucket/candidate-b.docx?X-Amz-Signature=...
 输出要求：请输出批量简历审查与排序报告。
 ```
 
-`简历文件：` 后可以放服务端本地路径或 HTTP(S) 预签名 URL。FastGPT/MinIO 的端口映射兼容环境变量与原智能体一致。
+`简历文件：` 后可以放服务端本地路径或 HTTP(S) 预签名 URL。生产环境使用 `AGENT_REMOTE_ALLOWED_HOSTS`、`AGENT_REMOTE_MAX_BYTES`、`AGENT_REMOTE_TIMEOUT_SECONDS` 限制远程附件；仅在签名 Host 与传输地址不同时配置 `AGENT_REMOTE_TRANSPORT_OVERRIDES`，原 URL 查询签名和 Host 不会被改写。
 
 平台如果在模型对话上传文件后自动生成 `附件：` 列表，也可以直接传入：
 
@@ -66,7 +68,7 @@ OpenAI content parts 中的 `file_url.url` 和 `image_url.url` 也会被识别�
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Uri http://127.0.0.1:8006/v1/chat/completions `
+  -Uri http://127.0.0.1:8008/v1/chat/completions `
   -ContentType "application/json" `
   -Body '{
     "model": "batch-resume-review-agent",

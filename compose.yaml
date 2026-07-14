@@ -25,12 +25,12 @@ services:
     image: agent-workspace:latest
     build:
       context: .
-    command: ["python", "-m", "src.agent_gateway", "serve", "--host", "0.0.0.0", "--port", "8004"]
+    command: ["python", "-m", "src.agent_gateway", "serve", "--host", "0.0.0.0", "--port", "8008"]
     env_file:
       - path: .env.local
         required: false
     ports:
-      - "8004:8004"
+      - "8008:8008"
     restart: unless-stopped
     depends_on:
       batch-resume-review:
