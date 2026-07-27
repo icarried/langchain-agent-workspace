@@ -17,6 +17,8 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 - Verified WSL root: `/mnt/e/My_sorcode/--创建智能体工作空间--`
 - Compose file/project: root `compose.yaml`, project `agent-workspace`
 - Platform Base URL: `http://<host>:8008/v1`
+- 机器人管理平台服务器 Base URL: `http://10.100.5.23:10085/v1`；容器内网关仍监听
+  `8008`，服务器通过 `10085:8008` 发布。
 - Only gateway publishes `8008:8008`; seven worker services listen on Compose-internal `8080`.
 - Models: `batch-resume-review-agent`, `tender-format-review-agent`, `smart-resume-screening-agent`, `contract-review-agent`, `official-document-review-agent`, `langchain-knowledge-base-agent`, `image-generation-agent`.
 - GPU Stack Base URL is `http://10.100.5.33:8003/v1`; credentials are stored only through `GPU_STACK_API_KEY` in `.env.local`.
@@ -45,7 +47,7 @@ Facts in this file must name the observer. A failed command from the Codex sandb
 - Windows path: `E:\My_sorcode\--创建智能体工作空间--`
 - WSL distro: `Ubuntu`
 - WSL path: `/mnt/e/My_sorcode/--创建智能体工作空间--`
-- Remote path: None configured
+- Remote path: `/opt/agent-workspace` on `robotpl`
 - Path conversion command: `wsl.exe -d Ubuntu -- wslpath -a 'E:\My_sorcode\--创建智能体工作空间--'`
 
 | Purpose | Windows path | WSL/Linux path | Container path | Notes |
@@ -69,6 +71,7 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Start batch resume LLM API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006` | `GET http://127.0.0.1:8006/v1/models`; do not run at the same time as its REST API |
 | Start knowledge base worker for debugging | Windows PowerShell | Project root | `uvicorn src.agents.langchain_knowledge_base.openai_compatible_api:app --host 127.0.0.1 --port 18008` | `Invoke-RestMethod http://127.0.0.1:18008/health` |
 | Start unified Compose | WSL `Ubuntu` | `/mnt/e/My_sorcode/--创建智能体工作空间--` | `DOCKER_BUILDKIT=0 docker compose build gateway` then `docker compose up -d` | `docker compose ps`; only gateway publishes `8008` |
+| Inspect deployed unified Compose | Remote host `robotpl` | `/opt/agent-workspace` | `docker compose ps` | Seven workers healthy; gateway publishes `10085:8008` |
 | Run all agent tests | Windows PowerShell | Project root | `python -m pytest tests\agents -q` | Test result output |
 | Run focused tests | Windows PowerShell | Project root | `python -m pytest tests\agents\test_<agent>.py -q` | Test result output |
 | Run linters | Windows PowerShell | Project root | `ruff check .` | Ruff success |
@@ -129,6 +132,11 @@ Use dated bullets for discoveries that may need another confirmation.
 - 2026-07-14: Docker container `ai-app-platform-backend-1` on `ai-app-platform_ai_app_platform` (`172.27.0.6`, bridge gateway `172.27.0.1`) reaches unified gateway health and `/v1/models` through `172.27.0.1:8008`; its same-port `127.0.0.1` is refused and `host.docker.internal` does not resolve. Recheck after the platform Compose network is recreated.
 - 2026-07-24: WSL `Ubuntu` reaches GPU Stack through automatically loaded `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY=http://127.0.0.1:7897`; a forced direct (`--noproxy`) connection times out. Authenticated `/v1/models` through the proxy returned `deepseek-v4-flash`, `qwen3.5-122b-a10b`, `qwen3-vl-embedding-8b`, `qwen-image` and `qwen-image-edit`.
 - 2026-07-27: Real `image-generation-agent` SSE through the Compose gateway returned its first delta in about 0.016 seconds, then node-level execution progress and 5-second generation heartbeats before the final multimodal image content.
+- 2026-07-27: Release `20260727-1243-fcbbba248cd8` was deployed to remote host
+  `robotpl` under `/opt/agent-workspace`. The server runs eight production services from the
+  immutable `linux/amd64` image tag, publishes only `10085:8008`, and created a new empty
+  `agent-workspace_knowledge_base_data` volume. Authenticated gateway model discovery,
+  Chat Completions, and container-to-GPU-Stack model discovery all passed.
 
 ## Migration Check
 

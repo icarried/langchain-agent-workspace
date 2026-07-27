@@ -19,6 +19,20 @@
 
 ## 记录
 
+### 2026-07-27 - PowerShell 经 WSL 写远端 env 时换行被转义
+
+- 状态: Fixed
+- 影响: 首次生成 `/opt/agent-workspace/.env` 时，两项 Compose 插值变量被写成同一
+  行，镜像标签包含了字面量 `nAGENT_GATEWAY_PORT=10085n`。
+- 现象: `docker compose config --images` 输出异常镜像名；服务尚未启动。
+- 初步判断: PowerShell、`wsl.exe`、Bash 和远端 SSH 多层解析消耗了 `\n` 转义。
+- 已尝试: 改成两个独立 `echo` 写入动作，再次执行 `docker compose config --quiet`
+  和 `docker compose config --images`。
+- 结论: 镜像标签恢复为 `agent-workspace:20260727-1243-fcbbba248cd8`，端口变量独立为
+  `10085`，之后才执行正式启动。跨 Windows/WSL/SSH 写多行配置时不要依赖嵌套
+  `printf` 转义，应逐行写入或上传已校验文件。
+- 关联任务: T-042
+
 ### 2026-07-24 - 旧批量简历测试引用已移除包
 
 - 状态: Fixed

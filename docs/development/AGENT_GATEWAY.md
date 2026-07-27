@@ -61,6 +61,9 @@ python3 scripts/verify_agent_gateway_isolation.py
 
 脚本会停止并恢复 `contract-review` worker，验证其模型从列表移除、其他模型仍可调用、恢复后七个模型重新可见。
 
+机器人管理平台服务器的离线镜像发布、生产密钥、`10085:8008` 端口、升级和回滚
+流程见 `docs/operations/ROBOT_PLATFORM_DOCKER_DEPLOYMENT.md`。
+
 ## 远程附件
 
 文件型智能体支持本地挂载路径、HTTP(S) URL、FastGPT `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url`、`image_url.url`。预签名 MinIO/S3 URL 的查询参数不会被重写。

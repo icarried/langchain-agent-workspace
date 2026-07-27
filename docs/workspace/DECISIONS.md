@@ -2,6 +2,19 @@
 
 用于记录对后续开发有影响的设计决策。
 
+## 2026-07-27 - 服务器发布使用不可变镜像与离线校验包
+
+- 决策: 机器人管理平台服务器部署使用不可变镜像标签、gzip 压缩的 Docker save
+  发布包和 SHA-256 校验；远端只导入镜像并以 `--no-build --pull never` 启动。
+- 决策: 服务器宿主端口为 `10085`，容器网关仍监听 `8008`。Compose 通过
+  `AGENT_GATEWAY_PORT` 和 `AGENT_WORKSPACE_IMAGE` 分别配置发布端口和镜像版本。
+- 决策: 首次部署不迁移本机知识库卷，服务器创建自己的空
+  `agent-workspace_knowledge_base_data` 卷；升级和回滚不得使用 `down -v`。
+- 原因: 目标服务器与本机构架同为 amd64，但服务器可能不适合在线重建；不可变标签和
+  校验包能确保发布可追溯、可断点续传和可回滚。
+- 影响: 每次服务器发布应保留 release 目录、上一版镜像和生产 `.env.local`；本机
+  `local-proxy` profile 与 MinIO 传输映射不得复制到服务器。
+
 ## 2026-07-24 - GPU Stack统一模型与对话式图片生成
 
 - 决策: 工作区默认模型调用统一迁移到 `http://10.100.5.33:8003/v1`，使用 `GPU_STACK_API_KEY`。现有 DeepSeek智能体继续使用 `deepseek-v4-flash`，知识库嵌入改为 `qwen3-vl-embedding-8b`。

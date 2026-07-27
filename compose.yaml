@@ -1,7 +1,7 @@
 name: agent-workspace
 
 x-worker: &worker
-  image: agent-workspace:latest
+  image: ${AGENT_WORKSPACE_IMAGE:-agent-workspace:latest}
   env_file:
     - path: .env.local
       required: false
@@ -29,7 +29,7 @@ x-worker: &worker
 
 services:
   gpu-stack-proxy-relay:
-    image: agent-workspace:latest
+    image: ${AGENT_WORKSPACE_IMAGE:-agent-workspace:latest}
     profiles: ["local-proxy"]
     command:
       - python
@@ -57,7 +57,7 @@ services:
       start_period: 5s
 
   gateway:
-    image: agent-workspace:latest
+    image: ${AGENT_WORKSPACE_IMAGE:-agent-workspace:latest}
     build:
       context: .
     command: ["python", "-m", "src.agent_gateway", "serve", "--host", "0.0.0.0", "--port", "8008"]
@@ -65,7 +65,7 @@ services:
       - path: .env.local
         required: false
     ports:
-      - "8008:8008"
+      - "${AGENT_GATEWAY_PORT:-8008}:8008"
     restart: unless-stopped
     depends_on:
       batch-resume-review:

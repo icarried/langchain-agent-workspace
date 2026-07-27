@@ -9,6 +9,39 @@
 
 ## 当前任务
 
+### T-042 将统一智能体网关部署到机器人管理平台服务器
+
+- 状态: Done
+- 目标: 复用已验证的离线镜像发布经验，把当前 `agent-workspace` Compose 部署到机器人管理平台服务器，并保留可校验、可回滚、可复现的发布记录。
+- 验收标准:
+  - 发布镜像为目标服务器兼容的 `linux/amd64`，发布包包含 SHA-256 校验且不包含真实密钥。
+  - 通过 `robotpl` 将发布包传到 `/opt/agent-workspace/releases/<release-id>/`，远端校验后导入镜像。
+  - 生产环境不启用本机 `local-proxy` profile，容器可直接访问 GPU Stack。
+  - 不迁移本机知识库命名卷；远端首次启动创建空的 `knowledge_base_data` 卷。
+  - 远端仅发布宿主机端口 `10085` 到网关容器 `8008`，七个 worker 健康，`/health` 与 `/v1/models` 验证通过。
+  - 形成服务器部署、升级和回滚说明，且不执行 `docker compose down -v`。
+- 执行计划:
+  - 核对本机 WSL/Docker、目标服务器架构、端口、磁盘和 GPU Stack 网络。
+  - 生成不含卷和密钥的发布包，导出镜像并生成 SHA-256。
+  - 使用 rsync 断点续传，远端校验、导入并以生产配置启动。
+  - 从远端宿主机和容器内验证网关、worker、模型连通性及公开端口。
+- 验证:
+  - 发布版本为 `20260727-1243-fcbbba248cd8`，镜像
+    `sha256:fcbbba248cd81123807fb17e409154175392ee6a365ba391a93d96ad53df1e05`，
+    `linux/amd64`；383 MiB 压缩发布包在服务器通过 SHA-256 校验。
+  - 发布包已上传到
+    `/opt/agent-workspace/releases/20260727-1243-fcbbba248cd8/`，服务器使用
+    `--no-build --pull never` 启动，不含本机知识库卷。
+  - 远端创建空卷 `agent-workspace_knowledge_base_data`，8 个生产服务运行，七个
+    worker 均为 healthy；只有 gateway 发布 `10085:8008`。
+  - `/health` 返回 200 并报告七个模型健康；未授权 `/v1/models` 返回 401，带生产
+    密钥返回七个模型。
+  - `contract-review-agent` 非流式 Chat Completions 冒烟请求成功；从
+    `image-generation` 容器访问 GPU Stack `/v1/models` 返回 200 和五个预期模型。
+  - 现有 `ai-app-platform-backend-1` 容器访问
+    `http://10.100.5.23:10085/health` 返回 200，平台容器到新网关路径可达。
+- 最后更新: 2026-07-27（完成）
+
 ### T-041 增强图片智能体流式生成进度
 
 - 状态: Done
