@@ -20,6 +20,7 @@ Stream: enabled
 - `contract-review-agent`
 - `official-document-review-agent`
 - `langchain-knowledge-base-agent`
+- `image-generation-agent`
 
 `GET /v1/models` 只返回当前健康、可调用的模型。未知模型返回 `404 model_not_found`；已登记但不可用的模型返回 `503 model_unavailable`。`GET /health` 返回网关和各 worker 的脱敏状态。
 
@@ -58,7 +59,7 @@ Compose 仅把 gateway 发布为 `8008:8008`；worker 只在 Compose 网络内�
 python3 scripts/verify_agent_gateway_isolation.py
 ```
 
-脚本会停止并恢复 `contract-review` worker，验证其模型从列表移除、其他模型仍可调用、恢复后六个模型重新可见。
+脚本会停止并恢复 `contract-review` worker，验证其模型从列表移除、其他模型仍可调用、恢复后七个模型重新可见。
 
 ## 远程附件
 
@@ -97,6 +98,17 @@ POST /v1/knowledge-bases/{name}/retrieval
 ```
 
 这些管理接口不由首版网关公开。新智能体直接复用 `KnowledgeBaseManager(namespace)`，并使用自己的稳定 namespace。
+
+当前知识库默认通过 GPU Stack调用 `deepseek-v4-flash` 问答，并使用
+`qwen3-vl-embedding-8b`。嵌入模型或 Base URL变化时必须显式
+`ingest --rebuild`，不得将旧向量与新向量混用。
+
+## 图片生成模型
+
+`image-generation-agent` 接受文本、HTTP(S) `image_url`、Base64 data URL和带 MIME
+的原始 Base64。无底图时文生图，有底图时编辑；没有新上传图时会读取最近助手图片。
+最终响应使用多模态 content数组。AI 应用平台接入前必须完成
+`docs/development/AI_APP_PLATFORM_IMAGE_OUTPUT_HANDOFF.md`。
 
 ## 新增模型
 

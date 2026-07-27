@@ -4,7 +4,7 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 
 ## Metadata
 
-- Last updated: 2026-07-14
+- Last updated: 2026-07-27
 - Updated by: Codex using `$windows-wsl-dev-environment`
 - Project name: Agent Workspace
 - Project root as opened now: `E:\My_sorcode\--创建智能体工作空间--`
@@ -17,8 +17,10 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 - Verified WSL root: `/mnt/e/My_sorcode/--创建智能体工作空间--`
 - Compose file/project: root `compose.yaml`, project `agent-workspace`
 - Platform Base URL: `http://<host>:8008/v1`
-- Only gateway publishes `8008:8008`; six worker services listen on Compose-internal `8080`.
-- Models: `batch-resume-review-agent`, `tender-format-review-agent`, `smart-resume-screening-agent`, `contract-review-agent`, `official-document-review-agent`, `langchain-knowledge-base-agent`.
+- Only gateway publishes `8008:8008`; seven worker services listen on Compose-internal `8080`.
+- Models: `batch-resume-review-agent`, `tender-format-review-agent`, `smart-resume-screening-agent`, `contract-review-agent`, `official-document-review-agent`, `langchain-knowledge-base-agent`, `image-generation-agent`.
+- GPU Stack Base URL is `http://10.100.5.33:8003/v1`; credentials are stored only through `GPU_STACK_API_KEY` in `.env.local`.
+- On this workstation only, WSL reaches the intranet endpoint through its automatically loaded HTTP proxy at `127.0.0.1:7897`. The local ignored `.env` enables Compose profile `local-proxy`; service `gpu-stack-proxy-relay` exposes that loopback-only proxy only on Docker host-gateway `172.17.0.1:17897`. Server deployments must omit this profile and proxy URL and connect directly.
 - Start locally without Docker: `python -m src.agent_gateway dev --port 8008`.
 - Build/start in WSL: `DOCKER_BUILDKIT=0 docker compose build gateway` then `docker compose up -d`.
 - The current Chinese Windows-mounted path triggers a BuildKit session-header ASCII error; retain `DOCKER_BUILDKIT=0` until moved to a pure ASCII Linux path.
@@ -63,8 +65,8 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Start tender OpenAI-compatible API | Windows PowerShell | Project root | `uvicorn src.agents.tender_format_review.openai_compatible_api:app --host 0.0.0.0 --port 8007` | `GET http://127.0.0.1:8007/v1/models` |
 | Start unified gateway | Windows PowerShell | Project root | `python -m src.agent_gateway dev --port 8008` | `GET http://127.0.0.1:8008/v1/models` |
 | Start resume review API | Windows PowerShell | Project root | `uvicorn src.agents.resume_review.api:app --reload --port 18004` | Dry-run `/review` with a local text resume; do not use gateway port 8008 |
-| Start batch resume API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review.api:app --reload --port 8006` | Dry-run `/review` with sample resume paths |
-| Start batch resume LLM API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006` | `GET http://127.0.0.1:8006/v1/models`; do not run at same time as original batch API |
+| Start batch resume API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review_llm.api:app --reload --port 8006` | Dry-run `/review` with sample resume paths |
+| Start batch resume LLM API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006` | `GET http://127.0.0.1:8006/v1/models`; do not run at the same time as its REST API |
 | Start knowledge base worker for debugging | Windows PowerShell | Project root | `uvicorn src.agents.langchain_knowledge_base.openai_compatible_api:app --host 127.0.0.1 --port 18008` | `Invoke-RestMethod http://127.0.0.1:18008/health` |
 | Start unified Compose | WSL `Ubuntu` | `/mnt/e/My_sorcode/--创建智能体工作空间--` | `DOCKER_BUILDKIT=0 docker compose build gateway` then `docker compose up -d` | `docker compose ps`; only gateway publishes `8008` |
 | Run all agent tests | Windows PowerShell | Project root | `python -m pytest tests\agents -q` | Test result output |
@@ -78,11 +80,12 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Tender format review API | Windows | `127.0.0.1:8001` or configured host | Windows tools / local clients | `http://127.0.0.1:8001/review` | Dry-run `/review` | Original REST API. |
 | Tender MCP HTTP | Windows | `127.0.0.1:8002/mcp` | MCP clients | `http://127.0.0.1:8002/mcp` | MCP client call | Not a normal REST endpoint. |
 | Resume review HTTP MCP | Windows | `127.0.0.1:8003/mcp` | MCP clients | `http://127.0.0.1:8003/mcp` | MCP client call | Optional shared MCP mode. |
-| Unified agent gateway | WSL Docker / local supervisor | `0.0.0.0:8008` | FastGPT, Dify, local clients | `http://127.0.0.1:8008/v1/models` | Six healthy models | Only production public port. |
+| Unified agent gateway | WSL Docker / local supervisor | `0.0.0.0:8008` | FastGPT, Dify, local clients | `http://127.0.0.1:8008/v1/models` | Seven healthy models | Only production public port. |
 | Batch resume MCP HTTP | Windows | `127.0.0.1:8005/mcp` | MCP clients | `http://127.0.0.1:8005/mcp` | MCP client call | Optional shared MCP mode. |
-| Batch resume API or LLM API | Windows | `127.0.0.1:8006` | Windows tools or bridged FastGPT/Dify | `http://127.0.0.1:8006/...` or relay URL | `/review` or `/v1/models` depending on entrypoint | Original API and LLM adapter share port; do not run together. |
+| Batch resume API or LLM API | Windows | `127.0.0.1:8006` | Windows tools or bridged FastGPT/Dify | `http://127.0.0.1:8006/...` or relay URL | `/review` or `/v1/models` depending on entrypoint | Canonical `batch_resume_review_llm` REST API and LLM adapter share port; do not run together. |
 | Tender OpenAI-compatible API | Windows | `127.0.0.1:8007` | Dify/FastGPT custom model nodes | `http://127.0.0.1:8007/v1` | `/v1/models` | Supports streaming. |
 | Knowledge base worker debug API | Windows or Docker | `127.0.0.1:18008` | Windows tools | `http://127.0.0.1:18008/v1` | `/health` | Production calls use the gateway. |
+| GPU Stack proxy relay | WSL Docker host network, workstation-only `local-proxy` profile | `172.17.0.1:17897` | Agent worker containers | `http://host.docker.internal:17897` as HTTP(S) proxy | Compose health check | Relays to WSL auto-proxy `127.0.0.1:7897`; does not expose a public host port. Do not enable on the server. |
 
 ## Docker And Containers
 
@@ -107,6 +110,7 @@ Use this section for relays, tunnels, port forwards, signed URL transport mappin
 
 | Date | Mapping | Why it exists | Validation command/result | Remove when | Owner |
 | --- | --- | --- | --- | --- | --- |
+| 2026-07-24 | Docker `host.docker.internal:17897` -> host-network sidecar -> WSL `127.0.0.1:7897` HTTP proxy | GPU Stack intranet route requires the user's automatically managed local proxy; Docker workers cannot use WSL loopback directly | WSL proxied `/v1/models` returned 401 without credentials in 0.18s; authenticated image worker call returned all five expected models | Containers gain a directly usable managed proxy or direct intranet route | Project integration |
 | 2026-06-23 | Windows API `127.0.0.1:8006` -> WSL `socat` -> Docker bridge `172.24.0.1:18006` | Let FastGPT container call a Windows-hosted batch resume API | Previously validated in task T-021; recheck bridge address before reuse | FastGPT/Dify can directly reach the API or a stable reverse proxy is introduced | Project integration |
 | 2026-06-24 | `BATCH_RESUME_REVIEW_LOCAL_MINIO_ENDPOINT=http://127.0.0.1:9002` while preserving signed Host `10.71.2.94:9000` | FastGPT MinIO signed URL host differed from the actual Windows transport port | Reverified from WSL `Ubuntu` on 2026-06-30: `fastgpt-minio` is `9002->9000`; separate `minio` is `9000->9000` | FastGPT/MinIO external signing address is corrected | Project integration |
 | 2026-06-25 | Tender LLM wrapper maps `10.71.2.94:9000` transport to `127.0.0.1:9002` while preserving original Host | Same FastGPT/MinIO signed URL compatibility issue for tender `.docx` files | Covered by tests in prior task; not reverified on 2026-06-30 | FastGPT/MinIO external signing address is corrected and compatibility code is removed | Project integration |
@@ -123,6 +127,8 @@ Use dated bullets for discoveries that may need another confirmation.
 - 2026-06-30: Conda is available through `D:\ProgramData\miniforge3\Library\bin\conda.bat`; the project environment is named `langchain`.
 - 2026-06-30: `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` were not observed in the current PowerShell environment.
 - 2026-07-14: Docker container `ai-app-platform-backend-1` on `ai-app-platform_ai_app_platform` (`172.27.0.6`, bridge gateway `172.27.0.1`) reaches unified gateway health and `/v1/models` through `172.27.0.1:8008`; its same-port `127.0.0.1` is refused and `host.docker.internal` does not resolve. Recheck after the platform Compose network is recreated.
+- 2026-07-24: WSL `Ubuntu` reaches GPU Stack through automatically loaded `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY=http://127.0.0.1:7897`; a forced direct (`--noproxy`) connection times out. Authenticated `/v1/models` through the proxy returned `deepseek-v4-flash`, `qwen3.5-122b-a10b`, `qwen3-vl-embedding-8b`, `qwen-image` and `qwen-image-edit`.
+- 2026-07-27: Real `image-generation-agent` SSE through the Compose gateway returned its first delta in about 0.016 seconds, then node-level execution progress and 5-second generation heartbeats before the final multimodal image content.
 
 ## Migration Check
 

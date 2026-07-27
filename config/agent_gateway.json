@@ -29,6 +29,11 @@
       "id": "langchain-knowledge-base-agent",
       "app": "src.agents.langchain_knowledge_base.openai_compatible_api:app",
       "upstream": "http://langchain-knowledge-base:8080"
+    },
+    {
+      "id": "image-generation-agent",
+      "app": "src.agents.image_generation.openai_compatible_api:app",
+      "upstream": "http://image-generation:8080"
     }
   ]
 }

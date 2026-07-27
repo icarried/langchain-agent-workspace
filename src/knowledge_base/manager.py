@@ -185,13 +185,13 @@ class KnowledgeBaseManager:
 
     def _get_chat_model(self) -> ChatModel:
         if self._chat_model is None:
-            if not self.settings.openai_api_key:
-                raise RuntimeError("KB_OPENAI_API_KEY is not configured")
+            if not self.settings.effective_openai_api_key:
+                raise RuntimeError("KB_OPENAI_API_KEY or GPU_STACK_API_KEY is not configured")
             from langchain_openai import ChatOpenAI
 
             self._chat_model = ChatOpenAI(
                 model=self.settings.chat_model,
-                api_key=self.settings.openai_api_key,
+                api_key=self.settings.effective_openai_api_key,
                 base_url=self.settings.openai_base_url,
                 temperature=0,
             )

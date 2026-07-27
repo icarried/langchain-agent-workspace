@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
 
+GPU_STACK_BASE_URL = "http://10.100.5.33:8003/v1"
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     provider: str
@@ -22,7 +25,7 @@ MODEL_CONFIGS = {
     "deepseek": ModelConfig(
         provider="deepseek",
         model="deepseek-v4-flash",
-        base_url="https://api.deepseek.com",
+        base_url=GPU_STACK_BASE_URL,
         api_key_env="DEEPSEEK_API_KEY",
         practical_chunk_chars=12000,
         notes="候选人片段并行审查，候选人级决策后再执行确定性筛除和排序。",
@@ -45,18 +48,26 @@ def create_chat_model(provider: str = "deepseek", model: str | None = None) -> C
         supported = ", ".join(sorted(MODEL_CONFIGS))
         raise ValueError(f"unsupported provider '{provider}', supported: {supported}")
 
-    api_key = os.getenv(config.api_key_env)
-    if not api_key:
-        raise RuntimeError(f"missing {config.api_key_env}; set it in .env.local")
-    if not api_key.isascii() or any(char.isspace() for char in api_key):
-        raise RuntimeError(
-            f"{config.api_key_env} does not look like a valid API key; "
-            "it must be a plain ASCII token without whitespace. Check .env.local."
+    if provider == "deepseek":
+        api_key = os.getenv("GPU_STACK_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
+        base_url = (
+            os.getenv("BATCH_RESUME_REVIEW_BASE_URL")
+            or os.getenv("GPU_STACK_BASE_URL")
+            or config.base_url
         )
+        key_name = "GPU_STACK_API_KEY"
+    else:
+        api_key = os.getenv(config.api_key_env)
+        base_url = os.getenv("BATCH_RESUME_REVIEW_BASE_URL") or config.base_url
+        key_name = config.api_key_env
+    if not api_key:
+        raise RuntimeError(f"missing {key_name}; set it in .env.local")
+    if not api_key.isascii() or any(char.isspace() for char in api_key):
+        raise RuntimeError(f"{key_name} must be a plain ASCII token without whitespace")
 
     return ChatOpenAI(
         model=model or os.getenv("BATCH_RESUME_REVIEW_MODEL") or config.model,
         api_key=api_key,
-        base_url=os.getenv("BATCH_RESUME_REVIEW_BASE_URL") or config.base_url,
+        base_url=base_url.rstrip("/"),
         temperature=0,
     )

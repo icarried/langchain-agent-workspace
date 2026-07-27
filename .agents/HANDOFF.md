@@ -4,12 +4,17 @@
 
 ## 当前交接
 
+- 2026-07-24 图片生成平台交接:
+  - 工作区新增 `image-generation-agent`，但 AI 应用平台必须增加多模态 content
+    解析、MinIO持久化、`image_delta` SSE和助手图片附件回传，才能实现连续编辑。
+  - 详细实施规格见 `docs/development/AI_APP_PLATFORM_IMAGE_OUTPUT_HANDOFF.md`。
+
 - 日期: 2026-07-14
 - 状态: 统一入口已迁移至 `8008`；需要重新部署 Compose 后验证六个 worker 健康。
 - 已完成:
   - 新增 `8008` 统一 OpenAI-compatible 网关、声明式六模型注册和健康过滤。
   - 新增本机 worker 监管器和根目录 Linux Docker Compose；worker 独立运行且只暴露内部 `8080`。
-  - 将批量简历业务收敛到 `batch_resume_review_llm`，旧包只保留兼容转发。
+  - 将批量简历业务收敛到 `batch_resume_review_llm`，旧 `batch_resume_review` 包及其过时测试已移除。
   - 破坏性重做可复用知识库核心，按 namespace 和知识库名称隔离。
   - 共享远程附件安全下载和签名 Host 传输映射，移除招标智能体硬编码。
   - 146 项正式测试、全量 Ruff 及 Compose 故障隔离验收通过。

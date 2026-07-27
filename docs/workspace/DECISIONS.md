@@ -2,6 +2,20 @@
 
 用于记录对后续开发有影响的设计决策。
 
+## 2026-07-24 - GPU Stack统一模型与对话式图片生成
+
+- 决策: 工作区默认模型调用统一迁移到 `http://10.100.5.33:8003/v1`，使用 `GPU_STACK_API_KEY`。现有 DeepSeek智能体继续使用 `deepseek-v4-flash`，知识库嵌入改为 `qwen3-vl-embedding-8b`。
+- 决策: 新增 `image-generation-agent`。Qwen3.5视觉模型负责提示词改写，`qwen-image` 负责文生图，`qwen-image-edit` 负责单图编辑；当前用户图片优先，否则沿用最近助手图片。
+- 决策: 图片结果通过 Chat Completions多模态 content数组返回，worker 不持久化。AI 应用平台负责写入 MinIO并通过助手附件形成连续编辑闭环。
+- 决策: `7897` 代理仅属于当前开发机。本机未提交的 `.env` 启用 `local-proxy` Compose profile和 host-network sidecar；服务器默认不启用 profile、不设置容器代理，直接访问 GPU Stack。
+- 影响: 嵌入签名变化要求显式重建已有知识库；平台未完成图片输出 handoff前只能获得协议级图片结果。
+
+## 2026-07-27 - 图片流式 thinking只公开执行进度
+
+- 决策: 图片智能体把 LangGraph节点完成事件、最终改写提示词和生成心跳放入 `delta.reasoning_content`；不流式输出 Qwen3.5隐藏推理链。
+- 原因: 平台需要在图片生成完成前立即获得反馈，同时不能把内部思维链当成产品接口。
+- 影响: `thinking=true` 时前端可展示逐阶段状态；`thinking=false` 时相同进度走字符串 `delta.content`。最终图片协议保持为单次多模态 `delta.content` 数组。
+
 ## 2026-06-16 - 使用轻量 Agent 工作空间结构
 
 - 决策: 先建立 `AGENTS.md`、`.agents/tasks/`、`docs/`、`src/`、`tests/` 和 `secrets/`。
@@ -150,9 +164,9 @@
 
 ## 2026-07-14 - 批量简历业务实现收敛到 LLM 包
 
-- 决策: `batch_resume_review_llm` 是批量简历唯一业务实现；`batch_resume_review` 只保留导入、CLI 和 REST API 薄兼容转发。
+- 决策: `batch_resume_review_llm` 是批量简历唯一业务实现；`batch_resume_review` 旧包及只覆盖该旧包的测试均已移除。
 - 原因: 两套复制代码、示例和参考资料会持续分叉，统一网关已经通过进程隔离解决生产稳定性问题，不再需要源码复制隔离。
-- 影响: 模型 ID 和现有调用行为保持不变；新增功能、修复、资料和测试只维护在 canonical 包。此决策取代 2026-06-25 的“隔离复制”决策。
+- 影响: 模型 ID 和现有平台调用行为保持不变；新增功能、修复、资料和测试只维护在 canonical 包。旧 CLI/REST/MCP包路径不再兼容。此决策取代 2026-06-25 的“隔离复制”决策。
 
 ## 2026-07-14 - 知识库按 namespace 和名称破坏性重构
 

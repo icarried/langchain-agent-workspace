@@ -660,11 +660,11 @@ FastGPT 文件变量渲染为 JSON 数组时，服务会读取数组中的文件
 使用多份本地测试夹具执行 dry-run：
 
 ```powershell
-python -m src.agents.batch_resume_review review `
-  src\agents\batch_resume_review\examples\候选人A_工业AI.md `
-  src\agents\batch_resume_review\examples\候选人B_条件不符.md `
-  src\agents\batch_resume_review\examples\候选人C_待确认.md `
-  --job-description src\agents\batch_resume_review\examples\人工智能开发工程师岗位要求.md `
+python -m src.agents.batch_resume_review_llm review `
+  src\agents\batch_resume_review_llm\examples\候选人A_工业AI.md `
+  src\agents\batch_resume_review_llm\examples\候选人B_条件不符.md `
+  src\agents\batch_resume_review_llm\examples\候选人C_待确认.md `
+  --job-description src\agents\batch_resume_review_llm\examples\人工智能开发工程师岗位要求.md `
   --output 临时文件\批量简历审查_dry_run.md `
   --dry-run
 ```
@@ -674,7 +674,7 @@ python -m src.agents.batch_resume_review review `
 启动 API：
 
 ```powershell
-uvicorn src.agents.batch_resume_review.api:app --reload --port 8006
+uvicorn src.agents.batch_resume_review_llm.api:app --reload --port 8006
 ```
 
 API 的 `resume_paths` 可混合使用服务端本地路径与 FastGPT/MinIO HTTP(S) 预签名 URL。岗位要求正文传给 `job_description_text`；服务端岗位文件路径传给 `job_description_path`。生产内网建议设置 `BATCH_RESUME_REVIEW_ALLOWED_URL_HOSTS=10.71.2.94`，远程文件默认上限 10 MiB、超时 30 秒。
@@ -684,8 +684,8 @@ API 的 `resume_paths` 可混合使用服务端本地路径与 FastGPT/MinIO HTT
 启动 stdio 或 HTTP MCP：
 
 ```powershell
-python -m src.agents.batch_resume_review.mcp_server
-python -m src.agents.batch_resume_review.mcp_server --transport http --host 127.0.0.1 --port 8005 --path /mcp
+python -m src.agents.batch_resume_review_llm.mcp_server
+python -m src.agents.batch_resume_review_llm.mcp_server --transport http --host 127.0.0.1 --port 8005 --path /mcp
 ```
 
 MCP tool `review_resumes` 接收多份实际简历和一份岗位要求文本：
@@ -713,7 +713,7 @@ ZIP 内的 `README.md` 包含独立安装、CLI、API、stdio/HTTP MCP 使用说
 
 ## 批量简历 OpenAI-compatible 流式适配智能体
 
-`batch-resume-review-llm` 是批量简历唯一业务实现，供 Dify/FastGPT 自定义 OpenAI-compatible LLM 节点调用。旧 `batch-resume-review` 包只保留兼容转发。
+`batch-resume-review-llm` 是批量简历唯一业务实现，供 Dify/FastGPT 自定义 OpenAI-compatible LLM 节点调用。旧 `batch-resume-review` 包已移除。
 
 面向 FastGPT、Dify 等平台的人读版接入说明见 `docs/development/OPENAI_COMPATIBLE_LLM_PLATFORM_INTEGRATION.md`。
 
@@ -766,6 +766,56 @@ python -m pytest tests\agents\test_batch_resume_review_llm.py -q
 ```powershell
 python -m pytest tests\reference_data\test_university_references.py -q
 python -m pytest tests\agents -q
-ruff check src\reference_data src\agents\resume_review src\agents\batch_resume_review tests
+ruff check src\reference_data src\agents\resume_review src\agents\batch_resume_review_llm tests
 ```
 
+## GPU Stack 与图片生成智能体
+
+工作区默认使用以下共享配置，真实 Key只放在 `.env.local`：
+
+```env
+GPU_STACK_BASE_URL=http://10.100.5.33:8003/v1
+GPU_STACK_API_KEY=
+```
+
+现有 DeepSeek provider 默认使用 GPU Stack的 `deepseek-v4-flash`；各智能体
+`*_BASE_URL`/`*_MODEL` 仍可覆盖。知识库问答默认使用 `deepseek-v4-flash`，
+嵌入使用 `qwen3-vl-embedding-8b`。嵌入配置变化后必须显式重建：
+
+```powershell
+python -m src.knowledge_base ingest default --rebuild
+```
+
+图片智能体 dry-run：
+
+```powershell
+python -m src.agents.image_generation "画一只坐在窗边的猫" --dry-run
+python -m src.agent_gateway dev --port 8008 --models image-generation-agent
+```
+
+当前环境由 WSL 自动配置的 `127.0.0.1:7897` HTTP代理访问 GPU Stack。
+容器不能直接访问 WSL loopback；Compose 的 `gpu-stack-proxy-relay` sidecar
+使用 host network，把仅绑定 Docker host-gateway的 `172.17.0.1:17897`
+转发至 WSL 的 `127.0.0.1:7897`。worker默认通过
+`GPU_STACK_CONTAINER_PROXY_URL` 选择代理。本机未提交的 `.env` 已配置：
+
+```env
+COMPOSE_PROFILES=local-proxy
+GPU_STACK_CONTAINER_PROXY_URL=http://host.docker.internal:17897
+```
+
+因此本机 `docker compose up -d` 会自动启用并恢复 sidecar。服务器不需要7897
+代理：不要复制本机 `.env`，不要启用 `local-proxy` profile，并保持
+`GPU_STACK_CONTAINER_PROXY_URL` 为空，worker将直接访问 `GPU_STACK_BASE_URL`。
+本机不要把 `10.100.5.33` 加入 `NO_PROXY`。
+
+平台模型 ID为 `image-generation-agent`。无图片调用 `qwen-image`，有图片调用
+`qwen-image-edit`；最近助手图片可作为下一轮默认底图。完整平台改造见
+`docs/development/AI_APP_PLATFORM_IMAGE_OUTPUT_HANDOFF.md`。
+
+开启 `stream=true` 和 `thinking=true` 后，worker会立即通过
+`delta.reasoning_content` 返回解析输入、模式选择、提示词改写结果和开始生成等
+阶段，并在耗时生成期间每5秒发送当前阶段心跳。最终图片仍只在一次
+`delta.content` 多模态数组中返回。这里的 thinking是执行进度，不包含模型隐藏
+思维链。平台不显示 reasoning时可传 `"thinking": false`，进度将改走字符串
+`delta.content`。

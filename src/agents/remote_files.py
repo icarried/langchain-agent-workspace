@@ -37,20 +37,37 @@ def materialize_sources(
 
 
 def download_remote_file(url: str, target: Path) -> None:
+    data, _ = read_remote_file(url)
+    target.write_bytes(data)
+
+
+def read_remote_file(
+    url: str,
+    *,
+    max_bytes: int | None = None,
+    timeout: float | None = None,
+) -> tuple[bytes, str]:
     _validate_remote_host(url)
-    max_bytes = int(os.getenv("AGENT_FILE_MAX_BYTES", str(DEFAULT_MAX_BYTES)))
-    timeout = float(os.getenv("AGENT_FILE_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
+    byte_limit = max_bytes or int(os.getenv("AGENT_FILE_MAX_BYTES", str(DEFAULT_MAX_BYTES)))
+    request_timeout = timeout or float(
+        os.getenv("AGENT_FILE_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS))
+    )
     transport_url, headers = apply_transport_override(url)
     headers["User-Agent"] = "agent-workspace/1.0"
     request = urllib.request.Request(transport_url, headers=headers)
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+    with urllib.request.urlopen(request, timeout=request_timeout) as response:  # noqa: S310
         content_length = response.headers.get("Content-Length")
-        if content_length and int(content_length) > max_bytes:
+        if content_length and int(content_length) > byte_limit:
             raise ValueError("remote file exceeds AGENT_FILE_MAX_BYTES")
-        data = response.read(max_bytes + 1)
-    if len(data) > max_bytes:
+        if hasattr(response.headers, "get_content_type"):
+            content_type = response.headers.get_content_type()
+        else:
+            raw_content_type = response.headers.get("Content-Type", "")
+            content_type = raw_content_type.split(";", 1)[0].strip().lower()
+        data = response.read(byte_limit + 1)
+    if len(data) > byte_limit:
         raise ValueError("remote file exceeds AGENT_FILE_MAX_BYTES")
-    target.write_bytes(data)
+    return data, content_type
 
 
 def apply_transport_override(url: str) -> tuple[str, dict[str, str]]:

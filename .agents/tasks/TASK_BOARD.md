@@ -9,6 +9,50 @@
 
 ## 当前任务
 
+### T-041 增强图片智能体流式生成进度
+
+- 状态: Done
+- 目标: 让 `image-generation-agent` 在耗时的提示词改写和图片生成期间持续返回可见进度，降低平台等待感。
+- 验收标准:
+  - 流式请求立即返回角色和解析状态。
+  - `thinking=true` 时，模式选择、提示词改写结果、开始生成和等待心跳进入 `delta.reasoning_content`。
+  - 不输出模型隐藏思维链；最终图片仍只通过一次 `delta.content` 多模态数组返回。
+  - 非流式接口、错误脱敏和现有图片生成/编辑行为不回归。
+- 执行计划:
+  - 从 LangGraph节点更新产生结构化进度事件。
+  - 接入 OpenAI-compatible SSE并补协议测试。
+  - 更新运行说明并运行定向与全量回归。
+- 验证:
+  - 图片智能体定向测试14项通过；完整测试137项通过，Ruff和 `git diff --check` 通过。
+  - 真实 Compose网关流式文生图验证首个 delta约0.016秒返回。
+  - 实际事件顺序包含解析输入、模式选择、最终改写提示词、开始生成、5秒心跳和结果整理；最终 content类型仍为 `text`、`image_url`。
+  - 验证脚本只输出文字进度与 content类型，不输出图片 Base64。
+- 最后更新: 2026-07-27（完成）
+
+### T-040 创建 GPU Stack 对话式图片生成智能体
+
+- 状态: Done
+- 目标: 新建 `image-generation-agent`，使用 Qwen3.5 视觉改写提示词，并按是否存在底图路由到 `qwen-image` 或 `qwen-image-edit`；同时迁移工作区 DeepSeek 与知识库嵌入默认配置到 GPU Stack。
+- 验收标准:
+  - 智能体支持 HTTP(S) 图片、Base64 data URL、原始 Base64及自动沿用最近生成图。
+  - OpenAI-compatible 非流式和 SSE均能返回文本与 `image_url` 多模态 content parts。
+  - 统一网关注册新模型且生产环境仍只公开 `8008`。
+  - 知识库问答使用 `deepseek-v4-flash`，嵌入使用 `qwen3-vl-embedding-8b`，旧向量不会与新向量混用。
+  - 形成可直接交给 AI 应用平台 Agent 的图片输出 handoff。
+- 执行计划:
+  - 迁移共享 GPU Stack配置与知识库默认模型。
+  - 实现图片输入、安全规范化、LangGraph工作流和 GPU Stack客户端。
+  - 增加 OpenAI-compatible worker、网关/Compose注册、测试和文档。
+  - 运行本地、WSL Docker及真实 GPU Stack契约验证。
+- 验证:
+  - 图片智能体与共享配置定向测试16项通过；移除已失效的旧批量简历测试后，全仓回归136项通过，Ruff全仓通过。
+  - GPU Stack真实契约验证通过：五个模型 ID精确匹配；`qwen3-vl-embedding-8b` 返回 4096维向量；Qwen3.5文本/视觉改写、`qwen-image` 文生图和 `qwen-image-edit` 连续编辑均成功。
+  - 真实两轮网关响应均为 `text + image_url` 多模态数组，图片使用 data URL；验证过程未输出 Key或 Base64。
+  - 本机 Compose profile含 9个服务（含本机代理 sidecar），使用 `.env.example` 模拟服务器时含 8个服务且不含 sidecar；两种 `docker compose config --quiet` 均通过。
+  - 网关 `/v1/models` 返回七个健康智能体模型且仅发布 `8008`；知识库卷盘点为0个文件，无旧向量需要备份或重建。
+  - AI应用平台图片输出与持久化改造已形成 `docs/development/AI_APP_PLATFORM_IMAGE_OUTPUT_HANDOFF.md`。
+- 最后更新: 2026-07-24（完成）
+
 ### T-039 将统一网关公共端口迁移至 8008
 
 - 状态: Done
@@ -66,7 +110,7 @@
   - `GET /v1/models` 仅列出健康模型，`POST /v1/chat/completions` 支持非流式和 SSE 透传。
   - 生产 Compose 只发布网关公共端口，各 worker 使用内部 `8080`，单个 worker 停止不影响网关和其他模型。
   - 本机开发可通过一个命令启动、监管和重启所选 worker，无需手工维护端口。
-  - `batch_resume_review_llm` 成为批量简历唯一业务实现，旧包名只保留兼容转发。
+  - `batch_resume_review_llm` 成为批量简历唯一业务实现，旧包名与对应过时测试已移除。
   - 知识库移除 primary/secondary 和独立项目残留，按 agent namespace 与 knowledge-base name 隔离数据。
   - 现有 OpenAI-compatible 回归、新网关、知识库、附件安全和 Compose 配置验证通过。
 - 执行计划:

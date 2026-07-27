@@ -157,7 +157,7 @@ async def test_mcp_stdio_server_review_tool_dry_run_with_base64_docx(tmp_path: P
 
 
 def test_create_chat_model_rejects_non_ascii_key(monkeypatch) -> None:
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "凭证名称：foo")
+    monkeypatch.setenv("GPU_STACK_API_KEY", "凭证名称：foo")
 
     try:
         create_chat_model(provider="deepseek")

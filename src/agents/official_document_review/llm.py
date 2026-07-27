@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from src.model_gateway import GPU_STACK_BASE_URL, provider_connection
 
 
 @dataclass(frozen=True)
@@ -21,7 +20,7 @@ MODEL_CONFIGS = {
     "deepseek": ModelConfig(
         provider="deepseek",
         model="deepseek-v4-flash",
-        base_url="https://api.deepseek.com",
+        base_url=GPU_STACK_BASE_URL,
         api_key_env="DEEPSEEK_API_KEY",
         notes="DeepSeek API 使用 OpenAI-compatible 接口；适合把确定性检测结果整理为可读整改报告。",
     ),
@@ -36,20 +35,19 @@ MODEL_CONFIGS = {
 
 
 def create_chat_model(provider: str = "deepseek", model: str | None = None) -> ChatOpenAI:
-    load_dotenv(Path.cwd() / ".env.local")
     config = MODEL_CONFIGS.get(provider)
     if config is None:
         supported = ", ".join(sorted(MODEL_CONFIGS))
         raise ValueError(f"unsupported provider '{provider}', supported: {supported}")
-    api_key = os.getenv(config.api_key_env)
-    if not api_key:
-        raise RuntimeError(f"missing {config.api_key_env}; set it in .env.local")
-    if not api_key.isascii() or any(char.isspace() for char in api_key):
-        raise RuntimeError(f"{config.api_key_env} must be a plain ASCII token without whitespace.")
+    connection = provider_connection(
+        provider,
+        legacy_api_key_env=config.api_key_env,
+        default_base_url=config.base_url,
+        base_url_override_env="OFFICIAL_DOCUMENT_REVIEW_BASE_URL",
+    )
     return ChatOpenAI(
         model=model or os.getenv("OFFICIAL_DOCUMENT_REVIEW_MODEL") or config.model,
-        api_key=api_key,
-        base_url=os.getenv("OFFICIAL_DOCUMENT_REVIEW_BASE_URL") or config.base_url,
+        api_key=connection.api_key,
+        base_url=connection.base_url,
         temperature=0,
     )
-

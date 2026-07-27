@@ -1,6 +1,6 @@
 # Batch Resume Review LLM Agent
 
-`batch-resume-review-llm` 是批量简历审查的唯一业务实现，并提供 OpenAI-compatible 流式适配。本智能体面向 Dify、FastGPT 等平台的自定义 LLM 节点；旧 `batch-resume-review` 包仅保留兼容转发。
+`batch-resume-review-llm` 是批量简历审查的唯一业务实现，并提供 OpenAI-compatible 流式适配。本智能体面向 Dify、FastGPT 等平台的自定义 LLM 节点；旧 `batch-resume-review` 包已移除。
 
 ## 能力
 

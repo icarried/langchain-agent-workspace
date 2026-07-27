@@ -19,6 +19,17 @@
 
 ## 记录
 
+### 2026-07-24 - 旧批量简历测试引用已移除包
+
+- 状态: Fixed
+- 影响: 直接运行 `pytest tests` 时，`tests/agents/test_batch_resume_review.py` 在收集阶段无法导入 `src.agents.batch_resume_review`。
+- 现象: 当前源码只有 canonical `src/agents/batch_resume_review_llm/`，但旧测试仍导入已不存在的兼容包路径。
+- 复现步骤: 运行 `python -m pytest tests -q`。
+- 初步判断: T-036/T-038记录要求旧包保留薄兼容转发，但当前工作树没有该目录；与 T-040 图片智能体实现无关。
+- 已尝试: 排除该既有测试后运行全部其余测试，136项通过；全仓 Ruff通过。
+- 结论: 用户确认旧包已正式移除；已删除只覆盖该包的 `tests/agents/test_batch_resume_review.py`。其余136项测试完整收集并通过。
+- 关联任务: T-036 / T-038 / T-040
+
 ### 2026-07-14 - 中文 Windows 挂载路径导致 Docker BuildKit 会话头失败
 
 - 状态: Fixed
