@@ -4,7 +4,7 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 
 ## Metadata
 
-- Last updated: 2026-07-27
+- Last updated: 2026-07-28
 - Updated by: Codex using `$windows-wsl-dev-environment`
 - Project name: Agent Workspace
 - Project root as opened now: `E:\My_sorcode\--创建智能体工作空间--`
@@ -19,8 +19,11 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 - Platform Base URL: `http://<host>:8008/v1`
 - 机器人管理平台服务器 Base URL: `http://10.100.5.23:10085/v1`；容器内网关仍监听
   `8008`，服务器通过 `10085:8008` 发布。
-- Only gateway publishes `8008:8008`; seven worker services listen on Compose-internal `8080`.
-- Models: `batch-resume-review-agent`, `tender-format-review-agent`, `smart-resume-screening-agent`, `contract-review-agent`, `official-document-review-agent`, `langchain-knowledge-base-agent`, `image-generation-agent`.
+- Only gateway publishes `8008:8008`; eight worker services listen on Compose-internal `8080`.
+- Models: `batch-resume-review-agent`, `tender-format-review-agent`, `smart-resume-screening-agent`, `contract-review-agent`, `official-document-review-agent`, `langchain-knowledge-base-agent`, `department-knowledge-base-agent`, `image-generation-agent`.
+- Department knowledge-base originals use the project-owned `department-kb-minio` service on
+  Compose-internal `9000/9001` and named volume `department_kb_minio_data`; neither MinIO port is
+  published to the host. The existing `ai-app-platform` MinIO is only an upload transport source.
 - GPU Stack Base URL is `http://10.100.5.33:8003/v1`; credentials are stored only through `GPU_STACK_API_KEY` in `.env.local`.
 - On this workstation only, WSL reaches the intranet endpoint through its automatically loaded HTTP proxy at `127.0.0.1:7897`. The local ignored `.env` enables Compose profile `local-proxy`; service `gpu-stack-proxy-relay` exposes that loopback-only proxy only on Docker host-gateway `172.17.0.1:17897`. Server deployments must omit this profile and proxy URL and connect directly.
 - Start locally without Docker: `python -m src.agent_gateway dev --port 8008`.
@@ -83,11 +86,12 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Tender format review API | Windows | `127.0.0.1:8001` or configured host | Windows tools / local clients | `http://127.0.0.1:8001/review` | Dry-run `/review` | Original REST API. |
 | Tender MCP HTTP | Windows | `127.0.0.1:8002/mcp` | MCP clients | `http://127.0.0.1:8002/mcp` | MCP client call | Not a normal REST endpoint. |
 | Resume review HTTP MCP | Windows | `127.0.0.1:8003/mcp` | MCP clients | `http://127.0.0.1:8003/mcp` | MCP client call | Optional shared MCP mode. |
-| Unified agent gateway | WSL Docker / local supervisor | `0.0.0.0:8008` | FastGPT, Dify, local clients | `http://127.0.0.1:8008/v1/models` | Seven healthy models | Only production public port. |
+| Unified agent gateway | WSL Docker / local supervisor | `0.0.0.0:8008` | FastGPT, Dify, local clients | `http://127.0.0.1:8008/v1/models` | Eight registered models when all workers are healthy | Only production public port. |
 | Batch resume MCP HTTP | Windows | `127.0.0.1:8005/mcp` | MCP clients | `http://127.0.0.1:8005/mcp` | MCP client call | Optional shared MCP mode. |
 | Batch resume API or LLM API | Windows | `127.0.0.1:8006` | Windows tools or bridged FastGPT/Dify | `http://127.0.0.1:8006/...` or relay URL | `/review` or `/v1/models` depending on entrypoint | Canonical `batch_resume_review_llm` REST API and LLM adapter share port; do not run together. |
 | Tender OpenAI-compatible API | Windows | `127.0.0.1:8007` | Dify/FastGPT custom model nodes | `http://127.0.0.1:8007/v1` | `/v1/models` | Supports streaming. |
 | Knowledge base worker debug API | Windows or Docker | `127.0.0.1:18008` | Windows tools | `http://127.0.0.1:18008/v1` | `/health` | Production calls use the gateway. |
+| Department knowledge-base MinIO | WSL Docker `Ubuntu` | Compose-internal `department-kb-minio:9000`; console `9001` | `department-knowledge-base` worker only | `http://department-kb-minio:9000` | `/minio/health/live` | No host port; eight department buckets; credentials only in `.env.local`. |
 | GPU Stack proxy relay | WSL Docker host network, workstation-only `local-proxy` profile | `172.17.0.1:17897` | Agent worker containers | `http://host.docker.internal:17897` as HTTP(S) proxy | Compose health check | Relays to WSL auto-proxy `127.0.0.1:7897`; does not expose a public host port. Do not enable on the server. |
 
 ## Docker And Containers
@@ -96,7 +100,8 @@ Record where each command must run. Do not mix shell syntax across rows.
 - Compose file(s): `src\agents\langchain_knowledge_base\docker-compose.yml` if present in the independent subproject
 - Compose project name: Default from directory unless overridden
 - Networks: WSL Docker networks include `fastgpt_app`, `fastgpt_data`, `fastgpt_aiproxy`, `fastgpt_codesandbox`, `fastgpt_opensandbox`; bridge address `172.24.0.1` exists and was previously used for relays
-- Volumes: Knowledge base Compose uses `kb_chroma_data` according to workspace docs
+- Volumes: shared knowledge data uses `knowledge_base_data`; department originals use
+  `department_kb_minio_data`. Never delete either volume during routine upgrade or rollback.
 - Containers that need host access: FastGPT/Dify/MinIO integrations may need to call Windows-hosted APIs
 
 | Container | Network | Gateway observed inside container | Host access method | Verified on |
@@ -137,6 +142,17 @@ Use dated bullets for discoveries that may need another confirmation.
   immutable `linux/amd64` image tag, publishes only `10085:8008`, and created a new empty
   `agent-workspace_knowledge_base_data` volume. Authenticated gateway model discovery,
   Chat Completions, and container-to-GPU-Stack model discovery all passed.
+- 2026-07-28: Root Compose validation with the new department knowledge-base worker and project
+  MinIO passed from WSL `Ubuntu`. Rendered Compose publishes only gateway `8008`; MinIO `9000/9001`
+  remain internal. Dedicated MinIO credentials are configured only in ignored `.env.local`.
+  The MinIO service, department worker and rebuilt gateway are running; the gateway advertises
+  eight healthy models. A real object archive and a temporary full ingest path (object archive,
+  local snapshot, GPU embedding and Chroma manifest) passed and cleaned their test artifacts.
+- 2026-07-28: Authenticated GPU Stack model discovery through the configured WSL proxy returned six
+  models and confirmed both `qwen3.5-122b-a10b` and `paddleocr-vl-1.6`. A real contract call classified
+  the explicit upload request as `save`; a generated text-page image returned non-empty OCR output.
+  Direct Codex sandbox PowerShell access without explicitly selecting the local proxy timed out, so
+  this is another observer-scope difference rather than an endpoint outage.
 
 ## Migration Check
 

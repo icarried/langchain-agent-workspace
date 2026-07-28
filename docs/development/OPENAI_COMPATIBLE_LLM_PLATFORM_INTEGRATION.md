@@ -13,7 +13,12 @@ API Key: AGENT_GATEWAY_API_KEY；未启用鉴权时可填占位值
 Stream: 开启
 ```
 
-模型通过 `GET /v1/models` 动态发现；该接口只列出健康 worker。当前模型为 `batch-resume-review-agent`、`tender-format-review-agent`、`smart-resume-screening-agent`、`contract-review-agent`、`official-document-review-agent` 和 `langchain-knowledge-base-agent`。完整部署与运维说明见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。
+模型通过 `GET /v1/models` 动态发现；该接口只列出健康 worker。当前模型为
+`batch-resume-review-agent`、`tender-format-review-agent`、
+`smart-resume-screening-agent`、`contract-review-agent`、
+`official-document-review-agent`、`langchain-knowledge-base-agent`、
+`department-knowledge-base-agent` 和 `image-generation-agent`。完整部署与运维说明见
+[AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。
 
 下文保留单个包装器的协议和排错示例。涉及 `8006` 等独立端口的命令仅用于本地调试，不应作为生产或平台配置。
 

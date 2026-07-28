@@ -2,6 +2,23 @@
 
 用于记录对后续开发有影响的设计决策。
 
+## 2026-07-28 - 八部门知识库使用固定空间参数和项目专属 MinIO
+
+- 决策: 新增 `department-knowledge-base-agent`，同一 OpenAI-compatible模型通过请求
+  顶层 `knowledge_id` 选择八个固定部门空间；字段只接受服务端白名单，不从用户文字
+  推导，未知或缺少值直接拒绝。
+- 决策: Qwen3.5只识别 `save/query/list/help/unknown` 意图；附件存在不等于保存，
+  删除、跨部门访问和权限变更不由 LLM执行。
+- 决策: `ai-app-platform` MinIO仅作为上传入口。保存时原件复制到本项目专属 MinIO，
+  每部门一个 bucket；本地知识库卷保留解析快照和 Chroma。MinIO 9000/9001只在
+  Compose内部开放，不发布宿主机端口。
+- 决策: OCR通过共享 provider接口逐页调用 GPU Stack `paddleocr-vl-1.6`。当前属于
+  VLM逐页 Markdown提取，不声称等同官方完整布局分析流水线；后续可替换 provider。
+- 原因: 避免平台和知识库项目在原件生命周期、凭证、备份及故障域上耦合，同时保持
+  一个接口、一个模型 ID和明确的数据边界。
+- 影响: 生产必须分别备份 `knowledge_base_data` 和 `department_kb_minio_data`，
+  配置独立 MinIO凭证；离线发布包还必须包含固定版本 MinIO镜像。
+
 ## 2026-07-27 - 服务器发布使用不可变镜像与离线校验包
 
 - 决策: 机器人管理平台服务器部署使用不可变镜像标签、gzip 压缩的 Docker save

@@ -9,6 +9,39 @@
 
 ## 当前任务
 
+### T-043 创建部门隔离知识库智能体群
+
+- 状态: Done
+- 目标: 复用工作区知识库核心，新建一个通过 `knowledge_id` 切换八个部门知识库空间的
+  OpenAI-compatible 智能体；使用 GPU Stack Qwen3.5 识别保存、问答等意图，并以可复用
+  PaddleOCR-VL-1.6 组件处理扫描文档。
+- 验收标准:
+  - 八个部门使用固定白名单映射和独立知识库目录，用户文本不能覆盖或推导
+    `knowledge_id`，未知值直接拒绝。
+  - 同一 `POST /v1/chat/completions` 支持 `knowledge_id`、附件 URL/content parts、
+    非流式和 SSE；识别到保存意图且存在附件时才持久化并入库。
+  - 文本型 PDF、DOCX、Markdown、TXT 优先本地解析；扫描 PDF和图片通过可扩展 OCR
+    provider 调用 GPU Stack `paddleocr-vl-1.6`。
+  - 新 worker 注册到统一网关并加入根 Compose，只使用内部 `8080`，生产仍只发布网关端口。
+  - 补充定向测试、环境变量模板、登记表、运行手册、网关说明、设计决策和对象存储建议。
+- 执行计划:
+  - 复用 `KnowledgeBaseManager` 和共享附件传输，补足受控文件保存与 OCR loader 扩展点。
+  - 实现部门目录、Qwen3.5 意图分类、LangGraph 工作流和 OpenAI-compatible worker。
+  - 注册网关/Compose，补齐配置、文档和测试。
+  - 运行定向测试、Ruff、Compose 配置及必要回归。
+- 验证:
+  - 部门知识库、共享 OCR、知识库核心和网关定向测试 32项通过；全仓测试 148项通过，
+    Ruff全仓和 `git diff --check` 通过。
+  - GPU Stack真实模型发现确认 `qwen3.5-122b-a10b` 与 `paddleocr-vl-1.6`；实际意图
+    请求返回 `save`，实际文字页 OCR返回非空结果。
+  - 项目专属 MinIO以固定镜像启动并健康，真实对象归档/校验/清理通过；完整临时链路
+    完成原件归档、本地快照、GPU嵌入、Chroma manifest并清理测试数据。
+  - 本机 Compose共 11个运行服务（含本机代理 sidecar、八个 worker、gateway和专属
+    MinIO），全部健康或正常运行；只有 gateway发布宿主机 `8008`。
+  - 鉴权网关 `/v1/models` 返回八个模型；新模型 dry-run保存路由、真实 Qwen查询路由、
+    `knowledge_id`作用域和对象存储配置均验证通过。
+- 最后更新: 2026-07-28（完成）
+
 ### T-042 将统一智能体网关部署到机器人管理平台服务器
 
 - 状态: Done

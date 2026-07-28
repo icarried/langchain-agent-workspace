@@ -20,6 +20,7 @@ Stream: enabled
 - `contract-review-agent`
 - `official-document-review-agent`
 - `langchain-knowledge-base-agent`
+- `department-knowledge-base-agent`
 - `image-generation-agent`
 
 `GET /v1/models` 只返回当前健康、可调用的模型。未知模型返回 `404 model_not_found`；已登记但不可用的模型返回 `503 model_unavailable`。`GET /health` 返回网关和各 worker 的脱敏状态。
@@ -51,7 +52,7 @@ wsl.exe -d Ubuntu -- bash -lc 'cd /mnt/e/My_sorcode/--创建智能体工作空�
 
 当前 Windows 挂载路径含中文时，BuildKit 会因会话共享键头包含非 ASCII 字符而失败，因此使用传统构建器；项目迁移到纯 ASCII Linux 路径后可重新验证 BuildKit。
 
-Compose 仅把 gateway 发布为 `8008:8008`；worker 只在 Compose 网络内监听 `8080`，并通过服务 DNS 寻址。停止服务使用 `docker compose down`。不要执行 `docker compose down -v`，除非明确要删除知识库持久化卷。
+Compose 仅把 gateway 发布为 `8008:8008`；worker 只在 Compose 网络内监听 `8080`，并通过服务 DNS 寻址。停止服务使用 `docker compose down`。不要执行 `docker compose down -v`，除非明确要删除知识库持久化卷和部门原件 MinIO 卷。
 
 故障隔离验收：
 
@@ -59,7 +60,8 @@ Compose 仅把 gateway 发布为 `8008:8008`；worker 只在 Compose 网络内�
 python3 scripts/verify_agent_gateway_isolation.py
 ```
 
-脚本会停止并恢复 `contract-review` worker，验证其模型从列表移除、其他模型仍可调用、恢复后七个模型重新可见。
+脚本会停止并恢复 `contract-review` worker，动态记录模型总数，验证其模型从列表移除、
+其他模型仍可调用、恢复后全部模型重新可见。
 
 机器人管理平台服务器的离线镜像发布、生产密钥、`10085:8008` 端口、升级和回滚
 流程见 `docs/operations/ROBOT_PLATFORM_DOCKER_DEPLOYMENT.md`。
@@ -105,6 +107,34 @@ POST /v1/knowledge-bases/{name}/retrieval
 当前知识库默认通过 GPU Stack调用 `deepseek-v4-flash` 问答，并使用
 `qwen3-vl-embedding-8b`。嵌入模型或 Base URL变化时必须显式
 `ingest --rebuild`，不得将旧向量与新向量混用。
+
+### 八部门隔离知识库
+
+模型 `department-knowledge-base-agent` 在同一
+`POST /v1/chat/completions` 请求中接受与 `thinking` 同级的 `knowledge_id`。
+可选值固定为：
+
+```text
+company-leadership
+marketing
+technical-support
+project-delivery
+operations-service
+procurement-implementation
+finance
+general-management
+```
+
+网关原样转发扩展字段，worker 再做白名单校验。平台可创建八个模型配置，Base URL、
+模型 ID 和 API key 相同，只固定不同 `knowledge_id`；部门用户不获得 API key，也不能
+从对话文本切换部门。
+
+附件可通过 `files` 数组、`file_url` / `image_url` content parts或消息中的 HTTP(S)
+URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件时，worker才把原件归档
+到本项目专属 MinIO并更新该部门 Chroma。专属 MinIO只在 Compose内部暴露
+`department-kb-minio:9000`，不发布宿主机端口；八个部门分别使用独立 bucket。
+详细协议、bucket、OCR和 dry-run说明见
+`src/agents/department_knowledge_base/README.md`。
 
 ## 图片生成模型
 

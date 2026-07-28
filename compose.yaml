@@ -9,7 +9,7 @@ x-worker: &worker
     HTTP_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     HTTPS_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     ALL_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
-    NO_PROXY: localhost,127.0.0.1,::1,gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,langchain-knowledge-base,image-generation,172.16.0.0/12,10.71.0.0/16
+    NO_PROXY: localhost,127.0.0.1,::1,gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,langchain-knowledge-base,department-knowledge-base,image-generation,172.16.0.0/12,10.71.0.0/16
   extra_hosts:
     - "host.docker.internal:host-gateway"
   expose:
@@ -28,6 +28,33 @@ x-worker: &worker
     start_period: 20s
 
 services:
+  department-kb-minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    env_file:
+      - path: .env.local
+        required: false
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        test -n "$${DEPARTMENT_KB_MINIO_ACCESS_KEY}"
+        test -n "$${DEPARTMENT_KB_MINIO_SECRET_KEY}"
+        export MINIO_ROOT_USER="$${DEPARTMENT_KB_MINIO_ACCESS_KEY}"
+        export MINIO_ROOT_PASSWORD="$${DEPARTMENT_KB_MINIO_SECRET_KEY}"
+        exec minio server /data --address ":9000" --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
+    volumes:
+      - department_kb_minio_data:/data
+    restart: unless-stopped
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   gpu-stack-proxy-relay:
     image: ${AGENT_WORKSPACE_IMAGE:-agent-workspace:latest}
     profiles: ["local-proxy"]
@@ -80,6 +107,8 @@ services:
         condition: service_healthy
       langchain-knowledge-base:
         condition: service_healthy
+      department-knowledge-base:
+        condition: service_healthy
       image-generation:
         condition: service_healthy
 
@@ -117,9 +146,29 @@ services:
     volumes:
       - knowledge_base_data:/app/data/knowledge_bases
 
+  department-knowledge-base:
+    <<: *worker
+    command: ["python", "-m", "uvicorn", "src.agents.department_knowledge_base.openai_compatible_api:app", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      HTTP_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
+      HTTPS_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
+      ALL_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
+      NO_PROXY: localhost,127.0.0.1,::1,gateway,department-knowledge-base,172.16.0.0/12,10.71.0.0/16
+      KB_DATA_ROOT: /app/data/knowledge_bases
+      KB_NAMESPACE: department-knowledge-base-agent
+      DEPARTMENT_KB_OBJECT_STORE_ENABLED: "true"
+      DEPARTMENT_KB_MINIO_ENDPOINT: department-kb-minio:9000
+      DEPARTMENT_KB_MINIO_SECURE: "false"
+    depends_on:
+      department-kb-minio:
+        condition: service_healthy
+    volumes:
+      - knowledge_base_data:/app/data/knowledge_bases
+
   image-generation:
     <<: *worker
     command: ["python", "-m", "uvicorn", "src.agents.image_generation.openai_compatible_api:app", "--host", "0.0.0.0", "--port", "8080"]
 
 volumes:
   knowledge_base_data:
+  department_kb_minio_data:
