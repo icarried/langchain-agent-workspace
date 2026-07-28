@@ -17,7 +17,7 @@ class VideoGenerationSettings(BaseSettings):
         extra="ignore",
     )
 
-    comfyui_video_base_url: str = "http://10.71.0.9:8188"
+    comfyui_video_base_url: str = "http://10.180.26.16:8188"
     comfyui_video_public_base_url: str | None = None
     comfyui_video_workflow_path: Path = DEFAULT_WORKFLOW_PATH
     comfyui_video_request_timeout_seconds: float = Field(default=30, gt=0)

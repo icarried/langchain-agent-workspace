@@ -858,12 +858,32 @@ GPU_STACK_CONTAINER_PROXY_URL=http://host.docker.internal:17897
 该 Agent 直接访问 ComfyUI，不需要启动独立 Videos API。先做不占用 GPU 的验证：
 
 ```powershell
-$env:COMFYUI_VIDEO_BASE_URL = "http://10.71.0.9:8188"
-$env:COMFYUI_VIDEO_PUBLIC_BASE_URL = "http://10.71.0.9:8188"
+$env:HTTP_PROXY = "http://127.0.0.1:7897"
+$env:HTTPS_PROXY = "http://127.0.0.1:7897"
+$env:NO_PROXY = "localhost,127.0.0.1"
+$env:COMFYUI_VIDEO_BASE_URL = "http://10.180.26.16:8188"
+$env:COMFYUI_VIDEO_PUBLIC_BASE_URL = "http://10.180.26.16:8188"
 python -m src.agents.comfyui_video_generation "生成5秒海边骑行视频，1280x720，25fps，随机种子42" --dry-run
 python -m src.agent_gateway dev --port 8008 --models comfyui-video-generation-agent
 ```
 
 `GET /health` 只有在 ComfyUI `/system_stats` 可用时返回 200；不可用时返回 503，统一网关将暂时隐藏该模型。正式 Chat Completion 支持 `stream`、`thinking`、`wait_for_completion`、`max_wait_seconds` 和显式 `video` 参数。
 
-容器访问 `10.71.0.9` 时必须保留在 `NO_PROXY` 中。最终下载链接来自 `COMFYUI_VIDEO_PUBLIC_BASE_URL/view`，该地址需要对实际调用方可达。
+本机访问 `10.180.26.16` 需要经过 `127.0.0.1:7897` 代理，因此不能把
+`10.180.0.0/16` 放入 `NO_PROXY`。Compose worker使用前文的
+`GPU_STACK_CONTAINER_PROXY_URL=http://host.docker.internal:17897`，再由 relay转发到7897。
+最终下载链接来自 `COMFYUI_VIDEO_PUBLIC_BASE_URL/view`，下载方也需要使用相同代理或具备
+到该地址的直连路由。
+
+按 `ai-app-platform` 后端调用上游模型的格式测试统一网关：
+
+```powershell
+python scripts/test_ai_app_video_agent.py `
+  --base-url http://127.0.0.1:8008/v1 `
+  --output cat.mp4
+```
+
+脚本默认模型为 `comfyui-video-generation-agent`，默认提示词为“生成一个猫咪视频”，不需要
+应用ID或登录凭证。它直接调用 `/v1/chat/completions`，请求体和平台后端调用上游模型时一致，
+覆盖统一网关、视频 Agent和ComfyUI；`--output` 可省略。只有设置了
+`AGENT_GATEWAY_API_KEY` 时才需要传入可选的 `--api-key`。

@@ -58,10 +58,15 @@
   - 注册网关与 Compose，更新环境和运维文档。
   - 运行定向、全量、静态与配置验证。
 - 验证:
-  - 新 Agent 与网关定向测试 19 项通过；覆盖解析、工作流白名单、ComfyUI提交/历史输出、节点错误、普通响应、SSE、dry-run、健康状态和未知模型。
+  - 新 Agent 与网关定向测试 20 项通过；覆盖解析、工作流白名单、ComfyUI提交/历史输出、节点错误、普通响应、SSE、dry-run、健康状态和未知模型。
   - 全仓测试 136 项通过；8 项既有测试因缺少 `临时文件/仅包含一行文字的文件.docx` 和当前替代环境 Chroma SQLite 无法创建而失败，与本任务无关。
   - 新 Agent 的 `compileall`、网关 JSON解析、Compose YAML结构和 `git diff --check` 通过；静态检查确认只有 gateway 发布端口，视频 worker 仅 expose内部8080。
-  - Agent自身 httpx客户端只读访问 `http://10.71.0.9:8188/system_stats` 返回健康；未为验收额外提交GPU任务。
+  - ComfyUI目标地址已按实际环境调整为 `http://10.180.26.16:8188`；保留环境变量覆盖能力，未为验收额外提交GPU任务。
+  - 新增 `scripts/test_ai_app_video_agent.py`，按 `ai-app-platform` 后端上游模型协议测试OpenAI-compatible SSE链路，并可下载最终视频。
+  - 测试脚本无需应用ID或登录凭证；请求体、SSE解析、可选网关鉴权和正文错误识别测试通过。
+  - 通过代理读取目标 ComfyUI 0.28.0 节点选项，并同步内置工作流的实际 LoRA 与文本编码器文件名。
+  - 使用 `comfyui` Conda环境和 `127.0.0.1:7897` 代理完成真实生成；任务 `video_a5c6b2c729b649a8842c2521efb87bff` 成功，成品下载为工作区 `cat.mp4`。
+  - 在同一 `comfyui` 环境安装最小测试依赖后，视频脚本、视频 Agent与网关聚焦回归共25项通过。
   - 当前机器没有 Ruff，PowerShell与WSL均无 Docker CLI；未执行 Ruff和原生 `docker compose config`，已记录到问题日志。
 - 最后更新: 2026-07-28
 

@@ -146,7 +146,7 @@
   },
   "267:232": {
     "inputs": {
-      "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+      "lora_name": "ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors",
       "strength_model": 0.5,
       "model": [
         "267:236",
@@ -620,7 +620,7 @@
   },
   "267:243": {
     "inputs": {
-      "text_encoder": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+      "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
       "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
       "device": "default"
     },
