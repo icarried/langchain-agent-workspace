@@ -1,5 +1,14 @@
 # Problem Log
 
+### 2026-07-28 - 当前验证环境缺少仓库声明的 langchain 环境、Ruff 与 Docker CLI
+
+- 状态: Open
+- 影响: `comfyui-video-generation-agent` 可以完成定向测试、编译、配置结构和远程 ComfyUI连通性验证，但不能在当前会话执行 Ruff或原生 `docker compose config`。
+- 现象: 文档中的 `C:\Users\Lenovo\.conda\envs\langchain\python.exe` 不存在；当前默认 Python没有 pytest；可用 `D:\miniforge\envs\testenv\python.exe` 有测试依赖但没有 Ruff；PowerShell没有 Docker，WSL Ubuntu也报告 `docker: command not found`。
+- 已尝试: 使用 testenv完成19项定向回归和136项全仓测试；用 PyYAML解析 Compose并断言只有 gateway发布端口；用 Agent自身 httpx客户端确认远程 ComfyUI健康。
+- 下一步: 恢复文档声明的 langchain conda环境或按 `environment.yml` 重建，并在具备 Docker CLI的部署环境补跑 Ruff与 `docker compose config --quiet`。
+- 关联任务: T-043
+
 用于记录开发、环境、依赖、模型调用或 Agent 行为中的问题。不要记录真实密钥。
 
 ## 模板

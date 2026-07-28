@@ -22,6 +22,7 @@ Stream: enabled
 - `langchain-knowledge-base-agent`
 - `department-knowledge-base-agent`
 - `image-generation-agent`
+- `comfyui-video-generation-agent`
 
 `GET /v1/models` 只返回当前健康、可调用的模型。未知模型返回 `404 model_not_found`；已登记但不可用的模型返回 `503 model_unavailable`。`GET /health` 返回网关和各 worker 的脱敏状态。
 
@@ -142,6 +143,16 @@ URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件�
 的原始 Base64。无底图时文生图，有底图时编辑；没有新上传图时会读取最近助手图片。
 最终响应使用多模态 content数组。AI 应用平台接入前必须完成
 `docs/development/AI_APP_PLATFORM_IMAGE_OUTPUT_HANDOFF.md`。
+
+## ComfyUI 视频生成模型
+
+`comfyui-video-generation-agent` 内置受控 LTX 2.3 API 工作流，由 worker 直接访问
+`COMFYUI_VIDEO_BASE_URL`，不需要另行启动 Videos API。显式 `video` 参数优先于自然语言中的
+尺寸、时长、FPS 和 seed。`dry_run=true` 只解析参数和渲染工作流，不提交 GPU 任务。
+
+最终 Chat Completion 同时返回 Markdown 下载链接和 `message.video` 元数据。下载链接使用
+`COMFYUI_VIDEO_PUBLIC_BASE_URL`，应配置为平台用户或下游服务可以访问的 ComfyUI 地址。
+远程 ComfyUI 不健康时 worker `/health` 返回 503，网关会隐藏该模型，但不会影响其他模型。
 
 ## 新增模型
 

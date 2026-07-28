@@ -39,6 +39,11 @@
       "id": "image-generation-agent",
       "app": "src.agents.image_generation.openai_compatible_api:app",
       "upstream": "http://image-generation:8080"
+    },
+    {
+      "id": "comfyui-video-generation-agent",
+      "app": "src.agents.comfyui_video_generation.openai_compatible_api:app",
+      "upstream": "http://comfyui-video-generation:8080"
     }
   ]
 }

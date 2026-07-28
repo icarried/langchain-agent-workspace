@@ -852,3 +852,18 @@ GPU_STACK_CONTAINER_PROXY_URL=http://host.docker.internal:17897
 `delta.content` 多模态数组中返回。这里的 thinking是执行进度，不包含模型隐藏
 思维链。平台不显示 reasoning时可传 `"thinking": false`，进度将改走字符串
 `delta.content`。
+
+## ComfyUI 视频生成智能体
+
+该 Agent 直接访问 ComfyUI，不需要启动独立 Videos API。先做不占用 GPU 的验证：
+
+```powershell
+$env:COMFYUI_VIDEO_BASE_URL = "http://10.71.0.9:8188"
+$env:COMFYUI_VIDEO_PUBLIC_BASE_URL = "http://10.71.0.9:8188"
+python -m src.agents.comfyui_video_generation "生成5秒海边骑行视频，1280x720，25fps，随机种子42" --dry-run
+python -m src.agent_gateway dev --port 8008 --models comfyui-video-generation-agent
+```
+
+`GET /health` 只有在 ComfyUI `/system_stats` 可用时返回 200；不可用时返回 503，统一网关将暂时隐藏该模型。正式 Chat Completion 支持 `stream`、`thinking`、`wait_for_completion`、`max_wait_seconds` 和显式 `video` 参数。
+
+容器访问 `10.71.0.9` 时必须保留在 `NO_PROXY` 中。最终下载链接来自 `COMFYUI_VIDEO_PUBLIC_BASE_URL/view`，该地址需要对实际调用方可达。

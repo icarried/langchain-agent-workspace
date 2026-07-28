@@ -209,3 +209,13 @@
 - 决策: 文件型 OpenAI-compatible 包装器共用远程附件模块，统一主机白名单、大小、超时、扩展名、临时文件清理及签名 Host 传输映射。
 - 原因: 各智能体自行下载会重复安全边界，并产生针对单台机器的硬编码端口映射。
 - 影响: 招标智能体移除 `10.71.2.94:9000 -> 127.0.0.1:9002` 硬编码；特殊网络使用 `AGENT_REMOTE_TRANSPORT_OVERRIDES` 显式配置，保留原始 Host 与查询签名。
+
+## 2026-07-28 - 视频生成 worker 直接调用 ComfyUI
+
+- 状态: Accepted
+- 决策: 新建 `comfyui-video-generation-agent`，在 worker 内完成 LTX 2.3 工作流渲染、ComfyUI提交和状态轮询，不再依赖单独部署的 Videos API；统一网关仍是唯一公开的 OpenAI-compatible 入口。
+- 原因: 现有 Agent 经 Videos API 二次转发会增加一个进程、部署单元和故障点，而工作区 worker 已能承担受控工具调用和异步进度管理。
+- 正面影响: 部署链路缩短为“gateway -> worker -> ComfyUI”；工作流参数白名单、SSE进度、dry-run和错误脱敏集中在 Agent包内。
+- 负面影响: 首版不提供独立持久化任务数据库；worker重启后不能通过自身恢复旧任务状态。最终下载 URL直接指向 ComfyUI，因此调用方必须能访问其 public base URL。
+- 失败模式与缓解: ComfyUI不可用时 worker健康检查返回503并从网关模型列表隐藏，不阻塞其他 Agent；提交校验失败时返回长度受限的节点错误；长任务受服务端最大等待时间限制，超时不取消ComfyUI任务。
+- 替代方案: 保留独立 Videos API（部署复杂度较高）；把视频逻辑放入 gateway（破坏路由层职责和故障隔离）；把视频 Base64塞入 Chat Completion（大文件内存与平台兼容风险过高）。

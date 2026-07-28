@@ -28,8 +28,20 @@
 - 数据隔离: namespace `department-knowledge-base-agent` 下八个独立 Chroma目录；专属 MinIO中八个独立 `department-kb-<knowledge_id>` bucket。
 - 对象存储: `ai-app-platform` MinIO只做上传入口；项目 Compose内 `department-kb-minio:9000` 保存长期原件且不发布宿主机端口。
 - 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`、`DEPARTMENT_KB_MINIO_ACCESS_KEY`、`DEPARTMENT_KB_MINIO_SECRET_KEY`及可选 `DEPARTMENT_KB_*` 覆盖变量。
-- 关联任务: T-043
+- 关联任务: T-043a
 - 备注: 部门用户不获得网关或 MinIO凭证；用户文字不能切换知识空间。删除、跨部门和权限变更不交给 LLM执行。
+
+### comfyui-video-generation
+
+- 状态: Ready
+- 用途: 使用内置 LTX 2.3 API 工作流生成视频；LangGraph worker 直接提交、轮询 ComfyUI，不依赖单独的 Videos API。
+- 源码路径: `src/agents/comfyui_video_generation/`
+- 运行入口: `python -m src.agents.comfyui_video_generation "<prompt>" --dry-run`
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `comfyui-video-generation-agent`。
+- 调试方式: 先执行 `dry_run=true` 验证参数与工作流，再确认 `/health` 中 `comfyui: ready` 后执行正式生成。
+- 需要的环境变量: `COMFYUI_VIDEO_BASE_URL`、`COMFYUI_VIDEO_PUBLIC_BASE_URL`；可选轮询、超时、尺寸、时长和 FPS 限制变量。
+- 关联任务: T-043
+- 备注: 最终下载 URL 直接指向 ComfyUI `/view`；调用方必须能访问 public base URL。worker 不公开额外宿主机端口。
 
 ### image-generation
 

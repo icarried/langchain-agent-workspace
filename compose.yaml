@@ -9,7 +9,7 @@ x-worker: &worker
     HTTP_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     HTTPS_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     ALL_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
-    NO_PROXY: localhost,127.0.0.1,::1,gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,langchain-knowledge-base,department-knowledge-base,image-generation,172.16.0.0/12,10.71.0.0/16
+    NO_PROXY: localhost,127.0.0.1,::1,gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,langchain-knowledge-base,department-knowledge-base,image-generation,comfyui-video-generation,172.16.0.0/12,10.71.0.0/16
   extra_hosts:
     - "host.docker.internal:host-gateway"
   expose:
@@ -111,6 +111,8 @@ services:
         condition: service_healthy
       image-generation:
         condition: service_healthy
+      comfyui-video-generation:
+        condition: service_healthy
 
   batch-resume-review:
     <<: *worker
@@ -168,6 +170,10 @@ services:
   image-generation:
     <<: *worker
     command: ["python", "-m", "uvicorn", "src.agents.image_generation.openai_compatible_api:app", "--host", "0.0.0.0", "--port", "8080"]
+
+  comfyui-video-generation:
+    <<: *worker
+    command: ["python", "-m", "uvicorn", "src.agents.comfyui_video_generation.openai_compatible_api:app", "--host", "0.0.0.0", "--port", "8080"]
 
 volumes:
   knowledge_base_data:

@@ -23,8 +23,9 @@
 - 已建立多智能体登记表，用于记录每个智能体的用途、路径、入口和状态。
 - 已创建 `tender-format-review` 招标文件格式审查智能体，并沉淀 `.codex/skills/langchain-agent-builder/` 作为后续 LangChain 智能体创建 skill。
 - 已创建 `resume-review` 单份简历审查智能体和 `batch_resume_review_llm` 批量简历筛选、评分与排序智能体；已移除旧 `batch_resume_review` 包。
-- 已建立统一 OpenAI-compatible 网关：生产环境只发布 `8008`，按模型 ID 路由到八个相互隔离的 worker，本机开发可由单命令监管启动。
+- 已建立统一 OpenAI-compatible 网关：生产环境只发布 `8008`，按模型 ID 路由到九个相互隔离的 worker，本机开发可由单命令监管启动。
 - 已接入 GPU Stack统一模型端点，并新增支持文生图、单图编辑和连续对话编辑的 `image-generation-agent`。
+- 已新增直接调用 ComfyUI LTX 2.3工作流的 `comfyui-video-generation-agent`，不依赖额外 Videos API。
 - 已将知识库重做为工作区级 `src/knowledge_base/` 可复用核心，按 agent namespace 和知识库名称隔离 Chroma 数据，不兼容旧 primary/secondary 数据。
 - 已新增八部门隔离知识库智能体，通过 `knowledge_id` 在同一模型接口选择固定部门空间，并使用本项目专属 MinIO 保存长期原件。
 

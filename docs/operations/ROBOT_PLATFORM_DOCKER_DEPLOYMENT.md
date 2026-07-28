@@ -6,7 +6,7 @@ WSL `Ubuntu` 中的 SSH 别名 `robotpl` 访问，运行目录固定为
 
 ## 部署边界
 
-- 发布工作区 `linux/amd64` 镜像，运行 gateway 和八个隔离 worker；同时发布固定版本
+- 发布工作区 `linux/amd64` 镜像，运行 gateway 和九个隔离 worker；同时发布固定版本
   `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` 镜像。
 - 只发布宿主机端口 `10085` 到容器网关 `8008`；worker 仅在 Compose 网络内监听
   `8080`。
