@@ -19,6 +19,18 @@
 
 ## 智能体列表
 
+### comfyui-video-generation
+
+- 状态: Ready
+- 用途: 使用内置 LTX 2.3 API 工作流生成视频；LangGraph worker 直接提交、轮询 ComfyUI，不依赖单独的 Videos API。
+- 源码路径: `src/agents/comfyui_video_generation/`
+- 运行入口: `python -m src.agents.comfyui_video_generation "<prompt>" --dry-run`
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `comfyui-video-generation-agent`。
+- 调试方式: 先执行 `dry_run=true` 验证参数与工作流，再确认 `/health` 中 `comfyui: ready` 后执行正式生成。
+- 需要的环境变量: `COMFYUI_VIDEO_BASE_URL`、`COMFYUI_VIDEO_PUBLIC_BASE_URL`；可选轮询、超时、尺寸、时长和 FPS 限制变量。
+- 关联任务: T-043
+- 备注: 最终下载 URL 直接指向 ComfyUI `/view`；调用方必须能访问 public base URL。worker 不公开额外宿主机端口。
+
 ### image-generation
 
 - 状态: In Development

@@ -9,6 +9,29 @@
 
 ## 当前任务
 
+### T-043 创建直连 ComfyUI 的视频生成智能体
+
+- 状态: Done
+- 目标: 在工作区内新增符合统一网关规范的 LangGraph 文生视频智能体，由 worker 直接调用 ComfyUI，不再依赖单独部署的 Videos API。
+- 验收标准:
+  - 源码位于 `src/agents/comfyui_video_generation/`，安全渲染内置 LTX 2.3 API 工作流。
+  - 支持 OpenAI-compatible 非流式与 SSE Chat Completions，进度使用 `reasoning_content`。
+  - `dry_run=true` 不调用 ComfyUI；正式请求直接访问 `COMFYUI_VIDEO_BASE_URL`。
+  - 模型 ID `comfyui-video-generation-agent` 注册到统一网关，Compose worker 不发布额外宿主机端口。
+  - 配置、Agent 登记、运行手册、架构决策和自动化测试同步完成。
+- 执行计划:
+  - 实现输入解析、受限参数模型、内置工作流渲染和直连 ComfyUI 客户端。
+  - 实现 LangGraph、服务层与 OpenAI-compatible worker。
+  - 注册网关与 Compose，更新环境和运维文档。
+  - 运行定向、全量、静态与配置验证。
+- 验证:
+  - 新 Agent 与网关定向测试 19 项通过；覆盖解析、工作流白名单、ComfyUI提交/历史输出、节点错误、普通响应、SSE、dry-run、健康状态和未知模型。
+  - 全仓测试 136 项通过；8 项既有测试因缺少 `临时文件/仅包含一行文字的文件.docx` 和当前替代环境 Chroma SQLite 无法创建而失败，与本任务无关。
+  - 新 Agent 的 `compileall`、网关 JSON解析、Compose YAML结构和 `git diff --check` 通过；静态检查确认只有 gateway 发布端口，视频 worker 仅 expose内部8080。
+  - Agent自身 httpx客户端只读访问 `http://10.71.0.9:8188/system_stats` 返回健康；未为验收额外提交GPU任务。
+  - 当前机器没有 Ruff，PowerShell与WSL均无 Docker CLI；未执行 Ruff和原生 `docker compose config`，已记录到问题日志。
+- 最后更新: 2026-07-28
+
 ### T-042 将统一智能体网关部署到机器人管理平台服务器
 
 - 状态: Done

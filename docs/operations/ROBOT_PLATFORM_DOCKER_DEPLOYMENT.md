@@ -6,7 +6,7 @@ WSL `Ubuntu` 中的 SSH 别名 `robotpl` 访问，运行目录固定为
 
 ## 部署边界
 
-- 发布一个 `linux/amd64` 镜像，运行 gateway 和七个隔离 worker。
+- 发布一个 `linux/amd64` 镜像，运行 gateway 和八个隔离 worker。
 - 只发布宿主机端口 `10085` 到容器网关 `8008`；worker 仅在 Compose 网络内监听
   `8080`。
 - 服务器直接访问 `http://10.100.5.33:8003/v1`，不启用本机
