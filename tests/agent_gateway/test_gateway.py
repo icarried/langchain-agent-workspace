@@ -54,11 +54,19 @@ def test_non_stream_request_preserves_unknown_fields():
     client, _ = _build_client(handler)
     response = client.post(
         "/v1/chat/completions",
-        json={"model": MODEL_ID, "messages": [], "stream": False, "thinking": False, "vendor_extra": 7},
+        json={
+            "model": MODEL_ID,
+            "messages": [],
+            "stream": False,
+            "thinking": False,
+            "knowledge_id": "marketing",
+            "vendor_extra": 7,
+        },
     )
     assert response.status_code == 200
     assert received["vendor_extra"] == 7
     assert received["thinking"] is False
+    assert received["knowledge_id"] == "marketing"
 
 
 def test_stream_response_is_forwarded_byte_for_byte():

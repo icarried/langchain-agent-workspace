@@ -13,10 +13,19 @@ class DocumentRecord:
     metadata: dict[str, object] = field(default_factory=dict)
 
 
-def iter_supported_paths(root: Path) -> list[Path]:
+def iter_supported_paths(
+    root: Path,
+    *,
+    supported_extensions: set[str] | None = None,
+) -> list[Path]:
     if not root.exists():
         return []
-    return sorted(path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS)
+    extensions = supported_extensions or SUPPORTED_EXTENSIONS
+    return sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.lower() in extensions
+    )
 
 
 def load_document(path: Path, *, source_root: Path) -> DocumentRecord | None:

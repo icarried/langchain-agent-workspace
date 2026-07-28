@@ -46,11 +46,12 @@ def _compose(compose_file: Path, *args: str) -> None:
 def verify(base_url: str, compose_file: Path) -> None:
     status, models = _json_request(f"{base_url}/v1/models")
     assert status == 200
-    assert len(models["data"]) == 6, models
+    expected_count = len(models["data"])
+    assert expected_count >= 2, models
     status, batch = _chat(base_url, "batch-resume-review-agent")
     assert status == 200
     assert batch["model"] == "batch-resume-review-agent"
-    print("before: 6 models and batch worker ready")
+    print(f"before: {expected_count} models and batch worker ready")
 
     _compose(compose_file, "stop", "contract-review")
     try:
@@ -63,7 +64,7 @@ def verify(base_url: str, compose_file: Path) -> None:
             model_ids = {item["id"] for item in models["data"]}
             if "contract-review-agent" not in model_ids:
                 break
-        assert len(model_ids) == 5, models
+        assert len(model_ids) == expected_count - 1, models
         assert "contract-review-agent" not in model_ids
         status, official = _chat(base_url, "official-document-review-agent")
         assert status == 200
@@ -71,15 +72,18 @@ def verify(base_url: str, compose_file: Path) -> None:
         status, contract = _chat(base_url, "contract-review-agent")
         assert status == 503, contract
         assert contract["error"]["code"] == "model_unavailable"
-        print("during failure: 5 models, other worker ready, contract returns 503")
+        print(
+            "during failure: "
+            f"{expected_count - 1} models, other worker ready, contract returns 503"
+        )
     finally:
         _compose(compose_file, "start", "contract-review")
 
     time.sleep(12)
     status, models = _json_request(f"{base_url}/v1/models")
     assert status == 200
-    assert len(models["data"]) == 6, models
-    print("after recovery: 6 models")
+    assert len(models["data"]) == expected_count, models
+    print(f"after recovery: {expected_count} models")
 
 
 def main() -> int:

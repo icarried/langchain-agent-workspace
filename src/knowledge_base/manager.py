@@ -5,9 +5,16 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, Protocol
 
-from .loaders import DocumentRecord, chunk_documents, iter_supported_paths, load_document
+from .loaders import (
+    SUPPORTED_EXTENSIONS,
+    DocumentRecord,
+    chunk_documents,
+    iter_supported_paths,
+    load_document,
+)
 from .schemas import Citation, IngestResult, KnowledgeAnswer, KnowledgeBaseInfo, RetrievalResult
 from .settings import KnowledgeBaseSettings
 
@@ -30,6 +37,9 @@ class ChatModel(Protocol):
     def invoke(self, value: Any) -> Any: ...
 
 
+DocumentLoader = Callable[..., DocumentRecord | None]
+
+
 class KnowledgeBaseManager:
     def __init__(
         self,
@@ -38,12 +48,16 @@ class KnowledgeBaseManager:
         settings: KnowledgeBaseSettings | None = None,
         embeddings: Embeddings | None = None,
         chat_model: ChatModel | None = None,
+        document_loader: DocumentLoader | None = None,
+        supported_extensions: set[str] | None = None,
     ) -> None:
         self.settings = settings or KnowledgeBaseSettings(namespace=namespace)
         self.namespace = validate_slug(namespace, "namespace")
         self.root = self.settings.data_root / self.namespace
         self._embeddings = embeddings
         self._chat_model = chat_model
+        self._document_loader = document_loader or load_document
+        self._supported_extensions = supported_extensions or SUPPORTED_EXTENSIONS
 
     def list_knowledge_bases(self) -> list[KnowledgeBaseInfo]:
         if not self.root.exists():
@@ -68,7 +82,10 @@ class KnowledgeBaseManager:
         paths["documents"].mkdir(parents=True, exist_ok=True)
         fingerprints = {
             path.relative_to(paths["documents"]).as_posix(): _sha256_file(path)
-            for path in iter_supported_paths(paths["documents"])
+            for path in iter_supported_paths(
+                paths["documents"],
+                supported_extensions=self._supported_extensions,
+            )
         }
         existing = _read_json(paths["manifest"])
         signature = self._embedding_signature()
@@ -85,8 +102,17 @@ class KnowledgeBaseManager:
 
         documents = [
             document
-            for path in iter_supported_paths(paths["documents"])
-            if (document := load_document(path, source_root=paths["documents"])) is not None
+            for path in iter_supported_paths(
+                paths["documents"],
+                supported_extensions=self._supported_extensions,
+            )
+            if (
+                document := self._document_loader(
+                    path,
+                    source_root=paths["documents"],
+                )
+            )
+            is not None
         ]
         chunks = chunk_documents(documents)
         embeddings = self._get_embeddings()
@@ -201,9 +227,13 @@ class KnowledgeBaseManager:
 class _ChromaBackend:
     def __init__(self, path: Path) -> None:
         import chromadb
+        from chromadb.config import Settings
 
         path.mkdir(parents=True, exist_ok=True)
-        self.client = chromadb.PersistentClient(path=str(path))
+        self.client = chromadb.PersistentClient(
+            path=str(path),
+            settings=Settings(anonymized_telemetry=False),
+        )
         self.collection_name = "chunks"
 
     def reset(self) -> None:

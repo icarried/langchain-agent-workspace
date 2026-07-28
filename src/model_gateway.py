@@ -17,6 +17,7 @@ GPU_STACK_VISION_MODEL = "qwen3.5-122b-a10b"
 GPU_STACK_EMBEDDING_MODEL = "qwen3-vl-embedding-8b"
 GPU_STACK_IMAGE_MODEL = "qwen-image"
 GPU_STACK_IMAGE_EDIT_MODEL = "qwen-image-edit"
+GPU_STACK_OCR_MODEL = "paddleocr-vl-1.6"
 
 
 @dataclass(frozen=True, slots=True)

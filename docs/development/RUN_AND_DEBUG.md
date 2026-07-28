@@ -100,6 +100,39 @@ uvicorn src.agents.langchain_knowledge_base.openai_compatible_api:app --host 127
 
 worker 内部管理接口为 `GET /v1/knowledge-bases`、`POST /v1/knowledge-bases/{name}/ingest` 和 `POST /v1/knowledge-bases/{name}/retrieval`。这些接口不由网关公开；平台问答统一使用 `http://<host>:8008/v1` 和模型 `langchain-knowledge-base-agent`。详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。
 
+## 八部门隔离知识库智能体
+
+本地只启动该 worker：
+
+```powershell
+python -m src.agent_gateway dev --port 8008 --models department-knowledge-base-agent
+```
+
+该方式适合 readiness、问答和 `dry_run`。真实保存使用根 Compose，因为专属 MinIO
+只通过 Compose DNS提供服务且不发布宿主机端口。
+
+同一个模型通过顶层扩展字段切换部门：
+
+```json
+{
+  "model": "department-knowledge-base-agent",
+  "knowledge_id": "marketing",
+  "messages": [{"role": "user", "content": "当前市场活动审批流程是什么？"}],
+  "stream": true,
+  "thinking": true
+}
+```
+
+保存文件时在消息中明确说明“保存/入库/归档”，并通过 `files` 或 content parts传入
+平台 MinIO预签名 URL。有附件但没有保存意图不会写入。`dry_run=true` 不调用模型、
+不下载附件且不写入，可用于平台配置验证。
+
+生产 Compose启用项目专属 `department-kb-minio`，只在内部监听
+`department-kb-minio:9000`，不占用宿主机 9000/9002。启动前必须在 `.env.local`
+配置 `DEPARTMENT_KB_MINIO_ACCESS_KEY` 和 `DEPARTMENT_KB_MINIO_SECRET_KEY`。
+完整部门 ID、对象键、OCR和备份说明见
+`src/agents/department_knowledge_base/README.md`。
+
 ## 招标文件格式审查智能体
 
 先执行 dry-run，确认 docx 可解析且分块合理：
