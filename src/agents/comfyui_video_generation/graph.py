@@ -93,7 +93,6 @@ def build_graph(
         elif status == "completed":
             text = (
                 "视频已生成完成。\n\n"
-                f"[下载视频]({state['content_url']})\n\n"
                 f"任务 ID：`{state['video_id']}`"
             )
         elif status == "failed":

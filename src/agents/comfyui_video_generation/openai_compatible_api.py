@@ -206,6 +206,10 @@ def _video_metadata(result: VideoGenerationResult) -> dict[str, Any]:
         "status": result.status,
         "progress": result.progress,
         "prompt_id": result.prompt_id,
+        # This is an internal source artifact. Platform callers should ingest it
+        # into their owned object storage before exposing a user-facing URL.
+        "source_url": result.content_url,
+        # Retained for clients built against the first version of the protocol.
         "content_url": result.content_url,
     }
 

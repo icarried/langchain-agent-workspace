@@ -2,6 +2,17 @@
 
 用于记录对后续开发有影响的设计决策。
 
+## 2026-07-29 - 生成视频由 AI 平台持久化后再向用户公开
+
+- 状态: Accepted
+- 决策: 视频 Agent 把 ComfyUI 输出地址作为结构化 `video.source_url` 交给 AI 平台，
+  不再把该内网地址写入用户可见 Markdown；AI 平台后端负责下载、校验并写入自己的
+  MinIO和 `file_mapping`，最终只向浏览器返回平台资产 URL。
+- 原因: ComfyUI `10.180.26.16:8188` 属于生成网络，不保证平台用户可达；容器或宿主机
+  临时文件也不具备用户归属、持久化和统一权限控制。
+- 影响: AI 平台需增加视频产物处理和 `video_delta`；下载来源必须使用主机/CIDR白名单、
+  大小和超时限制。Agent暂时保留 `video.content_url` 作为旧客户端兼容字段。
+
 ## 2026-07-28 - 八部门知识库使用固定空间参数和项目专属 MinIO
 
 - 决策: 新增 `department-knowledge-base-agent`，同一 OpenAI-compatible模型通过请求

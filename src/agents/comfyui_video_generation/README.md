@@ -20,7 +20,7 @@ COMFYUI_VIDEO_MAX_WAIT_SECONDS=1200
 COMFYUI_VIDEO_POLL_INTERVAL_SECONDS=2
 ```
 
-`COMFYUI_VIDEO_BASE_URL` 是 worker 访问地址；`COMFYUI_VIDEO_PUBLIC_BASE_URL` 是最终下载链接使用的、调用方可访问的地址。
+`COMFYUI_VIDEO_BASE_URL` 是 worker 访问地址；`COMFYUI_VIDEO_PUBLIC_BASE_URL` 是平台后端获取生成产物的源地址，不应直接暴露给浏览器。
 
 ## 本地 dry-run
 
@@ -61,4 +61,4 @@ Stream: enabled
 }
 ```
 
-最终响应包含 Markdown 下载链接和 `message.video` 元数据。下载链接直接指向 ComfyUI `/view`，因此调用方必须能够访问 `COMFYUI_VIDEO_PUBLIC_BASE_URL`。
+最终响应正文不再包含 ComfyUI 下载链接；非流式 `message.video` 和流式 `delta.video` 会提供 `source_url`，同时暂时保留旧 `content_url` 字段。AI平台后端必须下载并校验该内部产物，写入自己的 MinIO和文件映射后，再向浏览器返回平台资产地址。

@@ -9,6 +9,21 @@
 
 ## 当前任务
 
+### T-044 将生成视频持久化到 AI 平台对象存储
+
+- 状态: Done
+- 目标: 视频 Agent 只返回结构化的 ComfyUI 内部产物地址，由 AI 平台后端完成受控下载、格式校验、MinIO 持久化和用户文件映射，浏览器不再依赖访问 ComfyUI 内网地址。
+- 验收标准:
+  - Agent 用户正文不包含 `COMFYUI_VIDEO_PUBLIC_BASE_URL`，最终响应保留兼容字段并新增 `video.source_url`。
+  - AI 平台后端仅从显式白名单来源下载 MP4，限制大小、超时和重定向，写入现有 MinIO 与 `file_mapping`。
+  - 流式接口返回平台资产 `video_delta`，前端使用平台 URL 播放或下载。
+  - Agent 与 AI 平台聚焦测试通过。
+- 验证:
+  - Agent 协议修改及聚焦测试9项通过；正文不再含 ComfyUI地址，非流式和SSE均返回 `source_url`。
+  - AI平台新增 MP4真实格式、大小、超时、重定向及来源白名单校验，持久化到现有 MinIO和 `file_mapping`，并在失败时回滚清理对象。
+  - AI平台后端视频服务与流式回归25项通过，Ruff通过；前端 `video_delta` 测试4项通过，Vue TypeScript检查通过。
+- 最后更新: 2026-07-29
+
 ### T-043a 创建部门隔离知识库智能体群
 
 - 状态: Done

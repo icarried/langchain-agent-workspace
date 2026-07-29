@@ -201,7 +201,11 @@ def test_openai_non_stream_completion_calls_comfyui_directly() -> None:
     assert response.status_code == 200
     message = response.json()["choices"][0]["message"]
     assert "视频已生成完成" in message["content"]
+    assert "comfy.public" not in message["content"]
     assert message["video"]["status"] == "completed"
+    assert message["video"]["source_url"].startswith(
+        "http://comfy.public:8188/view"
+    )
     assert message["video"]["content_url"].startswith("http://comfy.public:8188/view")
     assert fake.submit_count == 1
 
@@ -217,6 +221,7 @@ def test_openai_stream_emits_progress_and_done() -> None:
     assert response.status_code == 200
     assert "reasoning_content" in response.text
     assert "视频已生成完成" in response.text
+    assert '"source_url": "http://comfy.public:8188/view' in response.text
     assert "data: [DONE]" in response.text
 
 
