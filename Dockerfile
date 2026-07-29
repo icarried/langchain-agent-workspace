@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libreoffice-writer \
+    && apt-get install -y --no-install-recommends fontconfig libreoffice-writer \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,7 +14,10 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r requirements-linux.txt
 
 COPY . .
-RUN mkdir -p /app/data/knowledge_bases /app/tmp \
+RUN mkdir -p /usr/local/share/fonts/official-document \
+    && cp /app/src/agents/official_document_formatting/fonts/* /usr/local/share/fonts/official-document/ \
+    && fc-cache -f \
+    && mkdir -p /app/data/knowledge_bases /app/tmp \
     && useradd --create-home --uid 10001 agent \
     && chown -R agent:agent /app/data /app/tmp
 

@@ -9,7 +9,7 @@ x-worker: &worker
     HTTP_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     HTTPS_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     ALL_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
-    NO_PROXY: localhost,127.0.0.1,::1,gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,langchain-knowledge-base,department-knowledge-base,image-generation,comfyui-video-generation,172.16.0.0/12,10.71.0.0/16
+    NO_PROXY: localhost,127.0.0.1,::1,gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,official-document-formatting,langchain-knowledge-base,department-knowledge-base,image-generation,comfyui-video-generation,172.16.0.0/12,10.71.0.0/16
   extra_hosts:
     - "host.docker.internal:host-gateway"
   expose:
@@ -105,6 +105,8 @@ services:
         condition: service_healthy
       official-document-review:
         condition: service_healthy
+      official-document-formatting:
+        condition: service_healthy
       langchain-knowledge-base:
         condition: service_healthy
       department-knowledge-base:
@@ -133,6 +135,10 @@ services:
   official-document-review:
     <<: *worker
     command: ["python", "-m", "uvicorn", "src.agents.official_document_review.openai_compatible_api:app", "--host", "0.0.0.0", "--port", "8080"]
+
+  official-document-formatting:
+    <<: *worker
+    command: ["python", "-m", "uvicorn", "src.agents.official_document_formatting.openai_compatible_api:app", "--host", "0.0.0.0", "--port", "8080"]
 
   langchain-knowledge-base:
     <<: *worker

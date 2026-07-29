@@ -154,6 +154,14 @@ URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件�
 `COMFYUI_VIDEO_PUBLIC_BASE_URL`，应配置为平台用户或下游服务可以访问的 ComfyUI 地址。
 远程 ComfyUI 不健康时 worker `/health` 返回 503，网关会隐藏该模型，但不会影响其他模型。
 
+## 公文格式化模型
+
+`official-document-formatting-agent` 接收一份 DOCX 附件，调用确定性公司格式化规则，
+不调用 LLM。正式结果通过非流式 `message.file` 或流式 `delta.file` 返回 Base64 DOCX、
+文件名、MIME、大小和 SHA-256。网关只代理该结构化字段，不保存文件；AI 平台负责解码、
+安全验证、MinIO 持久化和 `file_mapping`。默认输入上限由
+`OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES` 控制为 20 MiB。
+
 ## 新增模型
 
 1. 为智能体提供 `GET /health`、`GET /v1/models` 和 `POST /v1/chat/completions`。

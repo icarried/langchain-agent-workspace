@@ -576,6 +576,39 @@ src/agents/official_document_review/examples/示例通知.md
 
 也兼容平台自动生成的 `附件：` 列表，以及 OpenAI content parts 中的 `file_url.url` / `image_url.url`。URL 必须能被智能体服务所在环境访问，MinIO 预签名 URL 不要使用该服务进程无法访问的 `localhost`。
 
+## 公文格式化智能体
+
+`official-document-formatting-agent` 只执行公司已验证的 DOCX 格式化脚本，不调用模型。
+
+本地 dry-run：
+
+```powershell
+python -m src.agents.official_document_formatting format path\to\公文.docx --dry-run
+```
+
+生成新 DOCX：
+
+```powershell
+python -m src.agents.official_document_formatting format path\to\公文.docx
+```
+
+通过统一网关调试：
+
+```powershell
+python -m src.agent_gateway dev --port 8008 --models official-document-formatting-agent
+```
+
+平台配置：
+
+```text
+Base URL: http://<可达网关地址>:8008/v1
+Model: official-document-formatting-agent
+Stream: 开启
+```
+
+最终文件位于 `message.file` / `delta.file`，AI 平台应解码并使用统一 DOCX 验证器和
+`GeneratedArtifactService` 持久化，不能把 Base64 直接转发给浏览器。
+
 ## 智能简历结构化初筛智能体
 
 `smart-resume-screening` 来自 FastGPT 导出工作流“智能简历筛选”的经验转化，重点保留岗位基本信息、硬性条件、优先条件、淘汰条件、量化评分和排行榜输出。

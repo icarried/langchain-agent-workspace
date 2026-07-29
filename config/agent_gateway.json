@@ -26,6 +26,11 @@
       "upstream": "http://official-document-review:8080"
     },
     {
+      "id": "official-document-formatting-agent",
+      "app": "src.agents.official_document_formatting.openai_compatible_api:app",
+      "upstream": "http://official-document-formatting:8080"
+    },
+    {
       "id": "langchain-knowledge-base-agent",
       "app": "src.agents.langchain_knowledge_base.openai_compatible_api:app",
       "upstream": "http://langchain-knowledge-base:8080"

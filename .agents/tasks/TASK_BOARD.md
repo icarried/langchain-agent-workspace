@@ -9,6 +9,29 @@
 
 ## 当前任务
 
+### T-045 创建确定性公文格式化智能体
+
+- 状态: Done
+- 目标: 将已经过公司验证的 `format_docx` 脚本封装为 Linux 可部署的 LangGraph 智能体，只做 DOCX 格式化，不进行内容润色，并通过统一网关返回可由 AI 平台持久化的 `delta.file`。
+- 验收标准:
+  - 源码位于 `src/agents/official_document_formatting/`，格式化核心保持现有字体、字号、边距、行距、缩进、标题识别、表格和去重规则。
+  - 支持本地路径、HTTP(S) DOCX、平台 `附件：` 和 `file_url.url`，一次只处理一份 DOCX。
+  - 支持 dry-run、CLI、OpenAI-compatible 非流式和 SSE；正式结果在 `message.file` / `delta.file` 中返回 DOCX Base64、文件名、MIME 和 SHA-256。
+  - 模型 ID `official-document-formatting-agent` 注册到统一网关，Compose worker 只监听内部 `8080`，生产仍只发布网关端口。
+  - Linux 镜像安装随智能体交付的公文字体，字体缺失只告警、不改变格式化逻辑。
+  - 定向测试、网关测试、Ruff、配置检查和必要全量回归通过。
+- 执行计划:
+  - 冻结格式化内核与字体资源，先补确定性格式测试。
+  - 实现 LangGraph、服务层、CLI 和字体检查。
+  - 实现 OpenAI-compatible 文件协议、网关和 Compose 注册。
+  - 更新文档并执行聚焦与全量验证。
+- 验证:
+  - 公文格式化智能体、OpenAI-compatible 文件协议和网关聚焦测试共 20 项通过。
+  - 新增 Python 代码 Ruff 检查通过，`git diff --check` 通过，JSON/YAML 可解析。
+  - 全量回归完成 153 项通过；其余 18 项受当前基础环境缺少 `pytest-asyncio`、`minio`、历史测试样例和 Chroma SQLite 运行条件影响，均不涉及本次新增智能体。
+  - 当前机器未安装 Docker CLI，未执行本地 Compose 启动验证；Compose 服务、依赖和镜像字体安装配置已完成静态检查。
+- 最后更新: 2026-07-29
+
 ### T-044 将生成视频持久化到 AI 平台对象存储
 
 - 状态: Done

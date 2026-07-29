@@ -2,6 +2,19 @@
 
 用于记录对后续开发有影响的设计决策。
 
+## 2026-07-29 - 公文格式化使用冻结规则内核并由 AI 平台持久化成品
+
+- 状态: Accepted
+- 决策: 新建 `official-document-formatting-agent`，直接调用公司已经验证的
+  `format_docx` 规则，不引入 LLM 分类、润色或改写；格式化结果通过结构化
+  `message.file` / `delta.file` 返回。
+- 决策: Agent 不持有 AI 平台 MinIO 凭证。AI 平台解码文件后使用统一 DOCX 验证器、
+  `GeneratedArtifactService` 和现有 `file_mapping` 完成用户归属与下载。
+- 原因: 排版规则已经完成公司验收，继续让模型参与会引入不确定性；文件持久化属于平台
+  已有的权限与资产边界，不应在 worker 中重复实现。
+- 影响: 智能体镜像随包安装公文字体；后续平台需消费 `delta.file` 并产生通用
+  `file_delta`，当前 Agent 交付不修改 AI 平台代码。
+
 ## 2026-07-29 - 生成视频由 AI 平台持久化后再向用户公开
 
 - 状态: Accepted

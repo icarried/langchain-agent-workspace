@@ -82,6 +82,19 @@
 - 关联任务: T-029、T-032
 - 备注: 第一版不接入 FastGPT 原工作流中的内网 `detect` 服务，不处理扫描 PDF OCR，也不生成带批注的 Word 修订稿；报告不替代单位公文审核流程。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“公文文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或文件链接。
 
+### official-document-formatting
+
+- 状态: Ready
+- 用途: 调用公司已验证的确定性 Python 规则格式化单份 DOCX 公文，不调用大模型，不做内容润色。
+- 源码路径: `src/agents/official_document_formatting/`
+- 运行入口: `python -m src.agents.official_document_formatting format <document.docx> [--output <formatted.docx>] [--dry-run]`
+- OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `official-document-formatting-agent`。
+- 输入: 本地/挂载 DOCX、HTTP(S) URL、平台 `附件：` 或 `file_url.url`；一次只处理一份文件。
+- 输出: 非流式 `message.file` 或 SSE `delta.file`，包含 Base64 DOCX、文件名、MIME、大小和 SHA-256，由 AI 平台负责安全校验和持久化。
+- 环境变量: 可选 `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES`；远程附件复用 `AGENT_REMOTE_*`。
+- 关联任务: T-045
+- 备注: 镜像安装随智能体交付的四套公文字体；字体检查告警不阻断 DOCX 格式化。
+
 ### contract-review
 
 - 状态: Ready
