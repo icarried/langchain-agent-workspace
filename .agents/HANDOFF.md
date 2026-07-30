@@ -5,8 +5,9 @@
 ## 当前交接
 
 - 2026-07-30 部门知识库批量导入、智能检索、DOC与来源下载:
-  - 业务代码和本地验收已完成；用户已确认服务器部署，正在按不可变镜像流程发布并
-    保留上一版本作为回滚点。
+  - 业务代码、本地验收和服务器发布均已完成。生产 release为
+    `git-b242442`，镜像 `agent-workspace:git-b242442`，源码提交
+    `b2424426da4f`。
   - 提问链路新增 DeepSeek结构化查询改写、批量向量检索、RRF融合和证据回答；改写
     失败时回退原问题检索。参考 Dify DSL已提炼进计划，不依赖外部文件继续实施。
   - 用户来源只显示去重后的文档名，内部 chunk 引用继续保留但不再输出
@@ -24,6 +25,11 @@
     后端全量、前端6项、TypeScript和Compose检查通过。
   - 本地容器已验证100附件受理、101附件前置拒绝、真实 DOC转换及平台 DOC/Markdown
     安全校验。平台只读端到端已验证查询改写、来源去重和 TXT `file_delta` 下载。
+  - 服务器10个模型健康，平台到网关返回200，100/101附件生产 dry-run通过；
+    MinIO保持运行，发布前后 manifest哈希一致。
+  - 回滚点为 `agent-workspace:git-f114cd314795`；发布前环境、release编号、Compose
+    状态及 manifest哈希位于
+    `/opt/agent-workspace/releases/git-b242442/rollback/`，禁止删除知识库卷。
 
 - 2026-07-24 图片生成平台交接:
   - 工作区新增 `image-generation-agent`，但 AI 应用平台必须增加多模态 content
