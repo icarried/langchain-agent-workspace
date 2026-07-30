@@ -49,6 +49,11 @@
       "id": "comfyui-video-generation-agent",
       "app": "src.agents.comfyui_video_generation.openai_compatible_api:app",
       "upstream": "http://comfyui-video-generation:8080"
+    },
+    {
+      "id": "comfyui-image-to-video-agent",
+      "app": "src.agents.comfyui_image_to_video.openai_compatible_api:app",
+      "upstream": "http://comfyui-image-to-video:8080"
     }
   ]
 }

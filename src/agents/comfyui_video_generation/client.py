@@ -28,12 +28,21 @@ class ComfyUIClient:
         self,
         settings: VideoGenerationSettings | None = None,
         *,
+        base_url: str | None = None,
+        public_base_url: str | None = None,
+        request_timeout_seconds: float | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.settings = settings or VideoGenerationSettings()
+        self.public_base_url = (
+            public_base_url or self.settings.public_base_url
+        ).rstrip("/")
         self._client = httpx.AsyncClient(
-            base_url=self.settings.comfyui_video_base_url.rstrip("/"),
-            timeout=self.settings.comfyui_video_request_timeout_seconds,
+            base_url=(base_url or self.settings.comfyui_video_base_url).rstrip("/"),
+            timeout=(
+                request_timeout_seconds
+                or self.settings.comfyui_video_request_timeout_seconds
+            ),
             transport=transport,
             follow_redirects=False,
         )
@@ -68,6 +77,45 @@ class ComfyUIClient:
         if not isinstance(prompt_id, str) or not prompt_id:
             raise ComfyUIRequestError("ComfyUI没有返回prompt_id")
         return prompt_id
+
+    async def upload_image(
+        self,
+        data: bytes,
+        *,
+        filename: str,
+        content_type: str,
+    ) -> str:
+        if not data:
+            raise ValueError("不能上传空图片")
+        try:
+            response = await self._client.post(
+                "/upload/image",
+                files={"image": (filename, data, content_type)},
+                data={"type": "input", "overwrite": "false"},
+            )
+        except httpx.TimeoutException as exc:
+            raise ComfyUIRequestError("上传输入图片到ComfyUI超时") from exc
+        except httpx.HTTPError as exc:
+            raise ComfyUIRequestError("无法上传输入图片到ComfyUI") from exc
+        if response.status_code >= 400:
+            raise ComfyUIRequestError(
+                f"ComfyUI拒绝了输入图片（HTTP {response.status_code}）"
+            )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ComfyUIRequestError("ComfyUI图片上传响应不是JSON") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("name"), str):
+            raise ComfyUIRequestError("ComfyUI图片上传响应格式无效")
+        name = payload["name"].strip().replace("\\", "/")
+        subfolder = str(payload.get("subfolder", "")).strip().replace("\\", "/")
+        if not name or name.startswith("/") or ".." in name.split("/"):
+            raise ComfyUIRequestError("ComfyUI返回了无效的图片文件名")
+        if subfolder:
+            if subfolder.startswith("/") or ".." in subfolder.split("/"):
+                raise ComfyUIRequestError("ComfyUI返回了无效的图片目录")
+            return f"{subfolder.rstrip('/')}/{name}"
+        return name
 
     async def inspect(self, prompt_id: str) -> JobInspection:
         history = await self._get_json(f"/history/{prompt_id}")
@@ -128,7 +176,7 @@ class ComfyUIClient:
                 "type": str(output.get("type", "output")),
             }
         )
-        return f"{self.settings.public_base_url}/view?{query}"
+        return f"{self.public_base_url}/view?{query}"
 
 
 def _rejection_message(response: httpx.Response) -> str:

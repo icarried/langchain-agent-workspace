@@ -966,3 +966,34 @@ python scripts/test_ai_app_video_agent.py `
 应用ID或登录凭证。它直接调用 `/v1/chat/completions`，请求体和平台后端调用上游模型时一致，
 覆盖统一网关、视频 Agent和ComfyUI；`--output` 可省略。只有设置了
 `AGENT_GATEWAY_API_KEY` 时才需要传入可选的 `--api-key`。
+
+## ComfyUI 图生视频智能体
+
+图生视频模型为 `comfyui-image-to-video-agent`。它要求单张输入图片，支持 OpenAI
+`image_url` content part、HTTP(S)地址、Base64 data URL以及测试脚本中的本地图片路径。
+文字中可写 `5秒`、`25fps`、`1280x720`、`横屏`、`竖屏`、`1080p`和 `seed=42`；
+显式 `video`字段优先。时长硬上限15秒，FPS硬上限30，尺寸必须位于
+`COMFYUI_I2V_ALLOWED_SIZES`。
+
+先启动单模型开发入口：
+
+```powershell
+python -m src.agent_gateway dev --port 8008 --models comfyui-image-to-video-agent
+```
+
+使用本地图片按 AI平台上游模型协议测试：
+
+```powershell
+python scripts/test_ai_app_video_agent.py `
+  --image C:\path\to\cat.png `
+  --prompt "让猫咪缓慢转头看向镜头，镜头轻微推进" `
+  --size 1280x720 `
+  --seconds 5 `
+  --fps 25 `
+  --seed 42 `
+  --output cat-i2v.mp4
+```
+
+传入 `--image` 且未显式设置 `--model` 时，脚本自动选择
+`comfyui-image-to-video-agent`。请求摘要不会打印Base64图片正文。执行
+`dry_run=true` 时不会下载图片、调用视觉LLM、上传ComfyUI或提交GPU任务。
