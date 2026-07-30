@@ -40,6 +40,14 @@ def _payload(path: Path, *, stream: bool, dry_run: bool = False) -> dict[str, ob
 
 def test_models_and_readiness_probe() -> None:
     client = TestClient(app)
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.json() == {
+        "status": "ok",
+        "agent": "official-document-formatting",
+        "model": MODEL_ID,
+    }
+
     models = client.get("/v1/models")
     assert models.status_code == 200
     assert models.json()["data"][0]["id"] == MODEL_ID
@@ -100,6 +108,7 @@ def test_non_stream_completion_returns_file_payload(tmp_path: Path) -> None:
     assert file_payload["filename"] == "input-公文格式化.docx"
     assert hashlib.sha256(content).hexdigest() == file_payload["sha256"]
     assert content.startswith(b"PK")
+    assert "未验证" in message["content"]
 
 
 def test_stream_completion_returns_delta_file_and_done(tmp_path: Path) -> None:
@@ -137,5 +146,5 @@ def test_dry_run_returns_report_without_file(tmp_path: Path) -> None:
     assert response.status_code == 200
     message = response.json()["choices"][0]["message"]
     assert "dry-run" in message["content"]
+    assert "未验证" in message["content"]
     assert "file" not in message
-

@@ -578,7 +578,10 @@ src/agents/official_document_review/examples/示例通知.md
 
 ## 公文格式化智能体
 
-`official-document-formatting-agent` 只执行公司已验证的 DOCX 格式化脚本，不调用模型。
+`official-document-formatting-agent` 直接在 DOCX 上执行确定性公文格式规则，不调用模型。
+输出前会校验正文段落和表格单元格内容未发生变化。规则以
+`临时文件/公文格式化配置/公文格式规范.docx` 正文为准，不继承该样例内部与正文冲突的
+右边距和文档网格属性。
 
 本地 dry-run：
 
@@ -608,6 +611,43 @@ Stream: 开启
 
 最终文件位于 `message.file` / `delta.file`，AI 平台应解码并使用统一 DOCX 验证器和
 `GeneratedArtifactService` 持久化，不能把 Base64 直接转发给浏览器。
+
+自动处理的规则包括 A4、`3.7/3.5/2.8/2.6 cm` 页边距、`560 twips` 页面网格、
+`2.5 cm` 页脚、奇偶页 `－{PAGE}－` 动态页码、字体字号、四级标题缩进、附件说明、
+正式附件、落款日期、版记和三线表。数字与拉丁字符写入 `Times New Roman` 字体名；
+服务端不需要安装字体，最终打开文件的 Word/WPS 客户端需要提供规定字体。
+
+三线表按照 `临时文件/公文格式化配置/公文格式化.md` 执行：表格顶线和底线使用
+`w:sz=12`（1.5 pt），表头下线使用 `w:sz=6`（0.75 pt），左右线、竖线和内横线均为
+`none`。首行写入 `tblHeader`，Word/WPS 在表格跨页时自动重复表头；每行写入
+`cantSplit`，避免一条数据记录被拆分到两页。编辑器显示的灰色虚线属于网格线，不是三线表
+实际边框。
+
+接口报告会明确列出 `verified=false` 的未验证项。以下内容不能只靠 OOXML 静态确认：
+
+- 实际分页是否为每页 22 行、每行 28 字；
+- 标题回行和表格跨页是否符合视觉要求；
+- 印章、署名和成文日期的视觉位置；
+- 版记是否位于偶数页最后一面。
+
+这些项目必须在装有规定字体的 Word/WPS 或 LibreOffice 环境渲染全部页面后复核。没有
+渲染器时不得把“格式化完成”解释为所有视觉规则已经通过。
+
+聚焦回归：
+
+```powershell
+python -m pytest tests/agents/test_official_document_formatting.py `
+  tests/agents/test_official_document_formatting_roles.py `
+  tests/agents/test_official_document_formatting_layout.py `
+  tests/agents/test_official_document_formatting_backmatter.py `
+  tests/agents/test_official_document_formatting_golden.py `
+  tests/agents/test_official_document_formatting_llm.py `
+  tests/agents/test_remote_files.py `
+  tests/agent_gateway/test_gateway.py -q
+```
+
+金标准使用规范文件正文快照和采购请示原版，验证六个一级标题、正文、附件、落款日期、
+页面、页码和表格，同时比较所有正文段落与表格单元格值。结构测试通过不替代渲染复核。
 
 ## 智能简历结构化初筛智能体
 

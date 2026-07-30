@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -53,9 +54,7 @@ def format_official_document(
         "size": result.size,
         "dry_run": result.dry_run,
         "report": result.report,
-        "font_status": "ready" if result.font_inspection.ready else "warning",
-        "available_fonts": list(result.font_inspection.available),
-        "missing_fonts": list(result.font_inspection.missing),
+        "findings": [asdict(finding) for finding in result.findings],
         "output_path": str(resolve_workspace_path(output_path)) if persistent_output else "",
     }
 
@@ -82,4 +81,3 @@ def _invoke_graph(
 
 def _workspace_root() -> Path:
     return Path(__file__).resolve().parents[3]
-

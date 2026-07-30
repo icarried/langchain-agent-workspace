@@ -3,20 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import NotRequired, TypedDict
 
+from .compliance import ComplianceFinding
+
 DOCX_MIME_TYPE = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
-
-
-@dataclass(frozen=True)
-class FontInspection:
-    available: tuple[str, ...]
-    missing: tuple[str, ...]
-    fontconfig_available: bool
-
-    @property
-    def ready(self) -> bool:
-        return self.fontconfig_available and not self.missing
 
 
 @dataclass(frozen=True)
@@ -28,7 +19,7 @@ class FormattedDocumentResult:
     size: int
     dry_run: bool
     report: str
-    font_inspection: FontInspection
+    findings: tuple[ComplianceFinding, ...]
     output_path: str = ""
 
 
@@ -40,6 +31,4 @@ class FormattingState(TypedDict):
     persist_output: NotRequired[bool]
     source_size: NotRequired[int]
     output_filename: NotRequired[str]
-    font_inspection: NotRequired[FontInspection]
     result: NotRequired[FormattedDocumentResult]
-

@@ -7,7 +7,7 @@ __pycache__/
 .coverage
 .codegraph/
 htmlcov/
-
+local-deployment/
 # Virtual environments
 .venv/
 venv/

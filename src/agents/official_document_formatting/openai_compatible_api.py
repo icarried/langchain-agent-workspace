@@ -21,7 +21,6 @@ from src.agents.openai_compatible_inputs import (
 )
 from src.agents.remote_files import is_http_url, materialize_sources, remote_filename
 
-from .fonts import inspect_required_fonts
 from .service import format_official_document
 
 MODEL_ID = "official-document-formatting-agent"
@@ -49,12 +48,10 @@ app = FastAPI(
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    inspection = inspect_required_fonts()
     return {
         "status": "ok",
         "agent": "official-document-formatting",
         "model": MODEL_ID,
-        "fonts": "ready" if inspection.ready else "warning",
     }
 
 

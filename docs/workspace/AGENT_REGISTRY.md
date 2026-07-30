@@ -85,15 +85,19 @@
 ### official-document-formatting
 
 - 状态: Ready
-- 用途: 调用公司已验证的确定性 Python 规则格式化单份 DOCX 公文，不调用大模型，不做内容润色。
+- 用途: 按公司公文标准确定性格式化单份 DOCX，处理 A4 页面网格、奇偶页码、四级标题、
+  附件、落款日期、正式附件、版记和三线表，不调用大模型，不做内容润色或内容删除。
 - 源码路径: `src/agents/official_document_formatting/`
 - 运行入口: `python -m src.agents.official_document_formatting format <document.docx> [--output <formatted.docx>] [--dry-run]`
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `official-document-formatting-agent`。
 - 输入: 本地/挂载 DOCX、HTTP(S) URL、平台 `附件：` 或 `file_url.url`；一次只处理一份文件。
 - 输出: 非流式 `message.file` 或 SSE `delta.file`，包含 Base64 DOCX、文件名、MIME、大小和 SHA-256，由 AI 平台负责安全校验和持久化。
-- 环境变量: 可选 `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES`；远程附件复用 `AGENT_REMOTE_*`。
-- 关联任务: T-045
-- 备注: 镜像安装随智能体交付的四套公文字体；字体检查告警不阻断 DOCX 格式化。
+- 合规报告: 静态验证页面、网格、页码和内容不变；分页、标题回行、表格跨页、印章位置和
+  版记偶数页要求在没有渲染器时标记为 `verified=false`。
+- 环境变量: 可选 `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES`；远程附件复用 `AGENT_FILE_*`。
+- 关联任务: T-045、T-046、T-047、T-048、T-049
+- 备注: 服务端只写入 DOCX 字体名称，不安装或探测公文字体；字体由打开文件的用户端提供。
+  规范正文优先于规范样例内部不一致的文档属性；格式化完成不等于视觉分页已经通过。
 
 ### contract-review
 

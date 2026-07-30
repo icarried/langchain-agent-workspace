@@ -157,7 +157,8 @@ URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件�
 ## 公文格式化模型
 
 `official-document-formatting-agent` 接收一份 DOCX 附件，调用确定性公司格式化规则，
-不调用 LLM。正式结果通过非流式 `message.file` 或流式 `delta.file` 返回 Base64 DOCX、
+不调用 LLM，并在输出前校验正文和表格内容未变化。正式结果通过非流式 `message.file`
+或流式 `delta.file` 返回 Base64 DOCX、
 文件名、MIME、大小和 SHA-256。网关只代理该结构化字段，不保存文件；AI 平台负责解码、
 安全验证、MinIO 持久化和 `file_mapping`。默认输入上限由
 `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES` 控制为 20 MiB。

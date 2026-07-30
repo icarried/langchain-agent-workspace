@@ -8,7 +8,7 @@ from pathlib import Path
 from docx import Document
 from langgraph.graph import END, START, StateGraph
 
-from .fonts import inspect_required_fonts
+from .compliance import compliance_report, evaluate_compliance
 from .formatter import format_docx
 from .schemas import (
     DOCX_MIME_TYPE,
@@ -60,10 +60,6 @@ def _validate_input(state: FormattingState) -> dict[str, object]:
     }
 
 
-def _inspect_fonts(_state: FormattingState) -> dict[str, object]:
-    return {"font_inspection": inspect_required_fonts()}
-
-
 def _format_document(state: FormattingState) -> dict[str, object]:
     if state["dry_run"]:
         return {}
@@ -74,24 +70,25 @@ def _format_document(state: FormattingState) -> dict[str, object]:
 
 
 def _build_result(state: FormattingState) -> dict[str, object]:
-    inspection = state["font_inspection"]
     if state["dry_run"]:
         content = b""
         digest = ""
         size = 0
-        report = "公文格式化 dry-run 已完成：输入 DOCX 有效，未生成输出文件。"
+        findings = evaluate_compliance(
+            Document(state["source_path"]),
+            formatted=False,
+        )
     else:
         output = Path(state["output_path"])
         try:
-            Document(output)
+            formatted_document = Document(output)
         except (OSError, ValueError, zipfile.BadZipFile) as exc:
             raise ValueError("格式化输出不是有效 DOCX") from exc
         content = output.read_bytes()
         digest = hashlib.sha256(content).hexdigest()
         size = len(content)
-        report = "公文格式化完成，已按公司验证规则生成新的 DOCX 文件。"
-    if inspection.missing:
-        report += " 服务端字体检查提示缺少：" + "、".join(inspection.missing) + "。"
+        findings = evaluate_compliance(formatted_document, formatted=True)
+    report = compliance_report(findings, dry_run=state["dry_run"])
     result = FormattedDocumentResult(
         filename=state["output_filename"],
         mime_type=DOCX_MIME_TYPE,
@@ -100,7 +97,7 @@ def _build_result(state: FormattingState) -> dict[str, object]:
         size=size,
         dry_run=state["dry_run"],
         report=report,
-        font_inspection=inspection,
+        findings=findings,
         output_path=state["output_path"] if state.get("persist_output") else "",
     )
     return {"result": result}
@@ -109,13 +106,10 @@ def _build_result(state: FormattingState) -> dict[str, object]:
 def build_graph():
     graph = StateGraph(FormattingState)
     graph.add_node("validate_input", _validate_input)
-    graph.add_node("inspect_fonts", _inspect_fonts)
     graph.add_node("format_document", _format_document)
     graph.add_node("build_result", _build_result)
     graph.add_edge(START, "validate_input")
-    graph.add_edge("validate_input", "inspect_fonts")
-    graph.add_edge("inspect_fonts", "format_document")
+    graph.add_edge("validate_input", "format_document")
     graph.add_edge("format_document", "build_result")
     graph.add_edge("build_result", END)
     return graph.compile()
-

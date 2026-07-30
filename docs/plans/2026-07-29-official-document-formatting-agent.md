@@ -10,22 +10,19 @@
 
 ---
 
-### Task 1: Register the delivery task and freeze formatter assets
+### Task 1: Register the delivery task and freeze formatter rules
 
 **Files:**
 - Modify: `.agents/tasks/TASK_BOARD.md`
 - Create: `src/agents/official_document_formatting/formatter.py`
-- Create: `src/agents/official_document_formatting/fonts/*`
 
 1. Copy the already validated formatter logic without changing its formatting decisions.
-2. Package the four provided fonts for the Linux image and record their intended family names.
-3. Add tests that format a representative DOCX and assert margins, title/body fonts, line spacing, indentation, table borders, date cleanup, and duplicate-title cleanup.
+2. Add tests that format a representative DOCX and assert margins, title/body font names, line spacing, indentation, table borders, date cleanup, and duplicate-title cleanup.
 
 ### Task 2: Build deterministic service and LangGraph workflow
 
 **Files:**
 - Create: `src/agents/official_document_formatting/schemas.py`
-- Create: `src/agents/official_document_formatting/fonts.py`
 - Create: `src/agents/official_document_formatting/graph.py`
 - Create: `src/agents/official_document_formatting/service.py`
 - Create: `src/agents/official_document_formatting/cli.py`
@@ -33,10 +30,9 @@
 - Test: `tests/agents/test_official_document_formatting.py`
 
 1. Validate the input extension, file existence, DOCX package, and maximum size.
-2. Report Linux font availability without blocking formatting.
-3. Use explicit `validate_input`, `inspect_fonts`, `format_document`, and `build_result` graph nodes.
-4. Implement dry-run without writing an output document.
-5. Keep the source untouched and choose a deterministic `-公文格式化.docx` output name.
+2. Use explicit `validate_input`, `format_document`, and `build_result` graph nodes.
+3. Implement dry-run without writing an output document.
+4. Keep the source untouched and choose a deterministic `-公文格式化.docx` output name.
 
 ### Task 3: Add OpenAI-compatible file output
 
@@ -60,8 +56,7 @@
 
 1. Register immutable model ID `official-document-formatting-agent`.
 2. Add an internal-only worker on port 8080 and gateway health dependency.
-3. Install packaged fonts with fontconfig in the Linux image.
-4. Keep gateway port 8008 as the only published agent port.
+3. Keep gateway port 8008 as the only published agent port.
 
 ### Task 5: Document and verify
 
@@ -72,7 +67,6 @@
 - Modify: `docs/development/AGENT_GATEWAY.md`
 - Modify: `docs/workspace/DECISIONS.md`
 
-1. Document the input prompt, output protocol, Linux fonts, size limits, and platform responsibility split.
+1. Document the input prompt, output protocol, user-side font requirement, size limits, and platform responsibility split.
 2. Run focused formatter, worker, gateway, and remote attachment tests.
 3. Run the full test suite, Ruff, compile checks, JSON/YAML checks, and `git diff --check`.
-
