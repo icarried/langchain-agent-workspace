@@ -4,13 +4,16 @@ import hashlib
 import mimetypes
 import re
 import uuid
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.agents.openai_compatible_inputs import AttachmentReference
 from src.agents.remote_files import is_http_url, read_remote_file, remote_filename
 
 from .document_loader import SUPPORTED_EXTENSIONS
 from .schemas import SavedDocument
+from .schemas import ProgressCallback, ProgressEvent
 from .settings import DepartmentKnowledgeBaseSettings
 
 
@@ -22,8 +25,10 @@ class PreparedDocument:
 
 
 def prepare_sources(
-    sources: list[str],
+    sources: list[str | AttachmentReference],
     settings: DepartmentKnowledgeBaseSettings,
+    *,
+    progress: ProgressCallback | None = None,
 ) -> list[PreparedDocument]:
     if len(sources) > settings.max_files_per_request:
         raise ValueError(
@@ -31,14 +36,28 @@ def prepare_sources(
         )
     prepared: list[PreparedDocument] = []
     seen: dict[str, str] = {}
-    for source in sources:
-        if is_http_url(source):
-            data, content_type = read_remote_file(source)
-            filename = remote_filename(source)
+    for index, raw_source in enumerate(sources, start=1):
+        source = (
+            raw_source
+            if isinstance(raw_source, AttachmentReference)
+            else AttachmentReference(url=raw_source, source_kind="legacy")
+        )
+        location = source.url
+        display_name = source.filename or remote_filename(location)
+        if progress:
+            progress(
+                ProgressEvent(
+                    "download",
+                    f"正在下载并校验第 {index}/{len(sources)} 个附件：{display_name}",
+                )
+            )
+        if is_http_url(location):
+            data, content_type = read_remote_file(location)
+            filename = source.filename or remote_filename(location)
         else:
             if not settings.allow_local_files:
                 raise ValueError("local file paths are disabled; use an HTTP(S) attachment URL")
-            path = Path(source).resolve()
+            path = Path(location).resolve()
             if not path.is_file():
                 raise ValueError(f"local attachment does not exist: {path.name}")
             data = path.read_bytes()
@@ -58,6 +77,13 @@ def prepare_sources(
         prepared.append(
             PreparedDocument(filename=filename, data=data, sha256=digest)
         )
+        if progress:
+            progress(
+                ProgressEvent(
+                    "download",
+                    f"第 {index}/{len(sources)} 个附件下载并校验完成：{filename}",
+                )
+            )
     return prepared
 
 
@@ -85,8 +111,27 @@ def persist_documents(
     return results
 
 
+def describe_documents(
+    documents_dir: Path,
+    documents: list[PreparedDocument],
+) -> list[SavedDocument]:
+    return [
+        SavedDocument(
+            filename=document.filename,
+            sha256=document.sha256,
+            size_bytes=len(document.data),
+            unchanged=(
+                (target := documents_dir / document.filename).exists()
+                and _sha256_file(target) == document.sha256
+            ),
+        )
+        for document in documents
+    ]
+
+
 def _safe_filename(filename: str, content_type: str) -> str:
-    name = Path(filename).name.strip()
+    normalized = unicodedata.normalize("NFC", filename)
+    name = Path(normalized.replace("\\", "/")).name.strip()
     suffix = Path(name).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         guessed = mimetypes.guess_extension(content_type.split(";", 1)[0].strip())

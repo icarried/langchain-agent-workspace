@@ -127,6 +127,12 @@ python -m src.agent_gateway dev --port 8008 --models department-knowledge-base-a
 平台 MinIO预签名 URL。有附件但没有保存意图不会写入。`dry_run=true` 不调用模型、
 不下载附件且不写入，可用于平台配置验证。
 
+流式保存会按附件和处理阶段输出 `reasoning_content`，并默认每 10 秒发送心跳。
+文档、Chroma 和 manifest 在新版本目录构建并校验成功后，通过根 manifest 的
+`active_version` 原子发布；失败只留下幂等 MinIO 原件，不会清空当前索引。
+生产排错时使用响应阶段和容器日志中的 `request_id` 定位，日志会移除预签名 URL
+查询参数。不要把“原件已归档”误判为“索引已提交”。
+
 生产 Compose启用项目专属 `department-kb-minio`，只在内部监听
 `department-kb-minio:9000`，不占用宿主机 9000/9002。启动前必须在 `.env.local`
 配置 `DEPARTMENT_KB_MINIO_ACCESS_KEY` 和 `DEPARTMENT_KB_MINIO_SECRET_KEY`。

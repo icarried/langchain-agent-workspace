@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import mimetypes
 import zipfile
+from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
+from typing import Iterator
 
 from src.document_ocr import OCRProvider
 from src.knowledge_base.loaders import DocumentRecord
@@ -13,6 +17,26 @@ from .settings import DepartmentKnowledgeBaseSettings
 TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
 IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | IMAGE_EXTENSIONS | {".docx", ".pdf"}
+DocumentProgress = Callable[[str, str], None]
+_DOCUMENT_PROGRESS: ContextVar[DocumentProgress | None] = ContextVar(
+    "department_kb_document_progress",
+    default=None,
+)
+
+
+@contextmanager
+def document_progress(callback: DocumentProgress | None) -> Iterator[None]:
+    token = _DOCUMENT_PROGRESS.set(callback)
+    try:
+        yield
+    finally:
+        _DOCUMENT_PROGRESS.reset(token)
+
+
+def _emit_progress(stage: str, message: str) -> None:
+    callback = _DOCUMENT_PROGRESS.get()
+    if callback:
+        callback(stage, message)
 
 
 class AdaptiveDocumentLoader:
@@ -35,11 +59,13 @@ class AdaptiveDocumentLoader:
         elif suffix == ".docx":
             text = self._load_docx(path)
         elif suffix in IMAGE_EXTENSIONS:
+            _emit_progress("ocr", f"正在 OCR 图片：{path.name}。")
             text = self.ocr.extract_image(
                 path.read_bytes(),
                 _image_mime_type(path),
                 source=path.name,
             ).strip()
+            _emit_progress("ocr", f"OCR 已完成：{path.name}。")
         else:
             raise ValueError(f"unsupported knowledge-base document extension: {suffix}")
         if not text:
@@ -69,6 +95,10 @@ class AdaptiveDocumentLoader:
             if len(local_text) >= self.settings.min_local_text_chars:
                 text = local_text
             else:
+                _emit_progress(
+                    "ocr",
+                    f"正在 OCR：{path.name}，第 {index + 1}/{len(reader.pages)} 页。",
+                )
                 if rendered is None:
                     import fitz
 
@@ -79,6 +109,10 @@ class AdaptiveDocumentLoader:
                     "image/png",
                     source=f"{path.name}#page-{index + 1}",
                 ).strip()
+                _emit_progress(
+                    "ocr",
+                    f"OCR 已完成：{path.name}，第 {index + 1}/{len(reader.pages)} 页。",
+                )
             if text:
                 pages.append(f"<!-- page:{index + 1} -->\n{text}")
         if rendered is not None:
@@ -115,12 +149,20 @@ class AdaptiveDocumentLoader:
                 )
             for index, name in enumerate(media, start=1):
                 image_path = Path(name)
+                _emit_progress(
+                    "ocr",
+                    f"正在 OCR：{path.name}，第 {index}/{len(media)} 个内嵌图片。",
+                )
                 extracted.append(
                     self.ocr.extract_image(
                         archive.read(name),
                         _image_mime_type(image_path),
                         source=f"{path.name}#image-{index}",
                     ).strip()
+                )
+                _emit_progress(
+                    "ocr",
+                    f"OCR 已完成：{path.name}，第 {index}/{len(media)} 个内嵌图片。",
                 )
         return "\n\n".join(item for item in extracted if item)
 

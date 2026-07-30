@@ -153,6 +153,34 @@ Use dated bullets for discoveries that may need another confirmation.
   the explicit upload request as `save`; a generated text-page image returned non-empty OCR output.
   Direct Codex sandbox PowerShell access without explicitly selecting the local proxy timed out, so
   this is another observer-scope difference rather than an endpoint outage.
+- 2026-07-29: Remote host `robotpl` was upgraded through the local Git bundle and incremental
+  server-build workflow to commit `934e9af659d75a0eba3ba95be5ebacb5f25cdcaa`, release
+  `git-934e9af659d7`, image `agent-workspace:git-934e9af659d7`. All 11 Compose services run,
+  all nine agent models are healthy, only gateway publishes `10085:8008`, and both knowledge-base
+  named volumes remain present. Authenticated model discovery, GPU Stack, department MinIO,
+  platform-to-gateway connectivity and a gateway dry-run all passed.
+- 2026-07-30: Remote host `robotpl` was upgraded to commit
+  `804858173ca96e53efebb8f46827b86a5f468e52`, release `git-804858173ca9`, image
+  `agent-workspace:git-804858173ca9`. The server build installed `fontconfig`, copied the bundled
+  official-document fonts and refreshed the font cache. All 12 Compose services run, all ten agent
+  models are healthy, only gateway publishes `10085:8008`, and both knowledge-base named volumes
+  remain present. GPU Stack, department MinIO, platform-to-gateway connectivity and gateway
+  dry-run validation passed.
+- 2026-07-30: Remote host `robotpl` was upgraded through WSL `Ubuntu` and the local
+  Git-bundle/server-build workflow to commit
+  `6124ed133f39b19fece8ea0aa0934aa03de986ad`, release `git-6124ed133f39`, image
+  `agent-workspace:git-6124ed133f39`. All 12 Compose services run, all ten agent
+  models are healthy, only gateway publishes `10085:8008`, and both knowledge-base
+  named volumes remain present. GPU Stack, department MinIO, platform-to-gateway
+  connectivity and gateway dry-run validation passed.
+- 2026-07-30: Local `ai-app-platform` app 6 “项目交付部知识库” uses model config 7 with
+  `attachment.mode=file_url_content_part` and `knowledge_id=project-delivery`. A real upload
+  through Windows `127.0.0.1:10081` preserved the Chinese original filename through platform PG,
+  structured Chat Completions input, the department worker, local snapshot, manifest and the
+  project-owned MinIO object. The local backend container was recreated with temporary
+  `MINIO_PUBLIC_ENDPOINT=http://10.71.2.94:10082`; persist this value in the local ignored
+  `.env.production` before a future platform Compose recreation. The server value remains
+  `http://10.100.5.23:10082`.
 
 ## Migration Check
 

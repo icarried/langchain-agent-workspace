@@ -15,6 +15,11 @@ class FakeEmbeddings:
         return [float("vector" in lowered), float("policy" in lowered), 1.0]
 
 
+class FailingEmbeddings(FakeEmbeddings):
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("embedding failed")
+
+
 class FakeResponse:
     content = "基于知识库的回答"
 
@@ -90,3 +95,50 @@ def test_retrieve_answer_and_refusal(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError):
         manager.retrieve("missing", "question")
+
+
+def test_failed_update_keeps_previous_snapshot_and_manifest(tmp_path: Path):
+    manager = _manager(tmp_path)
+    (manager.documents_dir("default") / "guide.txt").write_text(
+        "vector policy",
+        encoding="utf-8",
+    )
+    manager.ingest("default")
+    manifest = (tmp_path / "agent-a" / "default" / "manifest.json").read_text(
+        encoding="utf-8"
+    )
+    active_documents = manager.active_documents_dir("default")
+
+    manager._embeddings = FailingEmbeddings()
+    with pytest.raises(RuntimeError, match="embedding failed"):
+        manager.publish_document_updates(
+            "default",
+            {"new.txt": b"new vector policy"},
+        )
+
+    assert (tmp_path / "agent-a" / "default" / "manifest.json").read_text(
+        encoding="utf-8"
+    ) == manifest
+    assert manager.active_documents_dir("default") == active_documents
+    assert (active_documents / "guide.txt").exists()
+    assert not (active_documents / "new.txt").exists()
+
+
+def test_successful_update_publishes_complete_document_snapshot(tmp_path: Path):
+    manager = _manager(tmp_path)
+    (manager.documents_dir("default") / "guide.txt").write_text(
+        "vector policy",
+        encoding="utf-8",
+    )
+    manager.ingest("default")
+
+    result = manager.publish_document_updates(
+        "default",
+        {"new.txt": b"new vector policy"},
+    )
+    active_documents = manager.active_documents_dir("default")
+
+    assert result.documents_seen == 2
+    assert (active_documents / "guide.txt").exists()
+    assert (active_documents / "new.txt").read_bytes() == b"new vector policy"
+    assert "versions" in active_documents.parts

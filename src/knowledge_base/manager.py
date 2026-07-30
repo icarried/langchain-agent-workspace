@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 from .loaders import (
     SUPPORTED_EXTENSIONS,
@@ -38,6 +40,7 @@ class ChatModel(Protocol):
 
 
 DocumentLoader = Callable[..., DocumentRecord | None]
+ProgressCallback = Callable[[str, str], None]
 
 
 class KnowledgeBaseManager:
@@ -69,7 +72,7 @@ class KnowledgeBaseManager:
                 KnowledgeBaseInfo(
                     name=directory.name,
                     namespace=self.namespace,
-                    documents_dir=str(directory / "documents"),
+                    documents_dir=str(self.active_documents_dir(directory.name)),
                     ingested_at=manifest.get("ingested_at"),
                     document_count=len(manifest.get("documents", {})),
                 )
@@ -78,8 +81,77 @@ class KnowledgeBaseManager:
 
     def ingest(self, knowledge_base: str, *, rebuild: bool = False) -> IngestResult:
         name = validate_slug(knowledge_base, "knowledge base")
-        paths = self._paths(name)
-        paths["documents"].mkdir(parents=True, exist_ok=True)
+        documents = self.documents_dir(name)
+        return self._publish_snapshot(
+            name,
+            source_documents=documents,
+            rebuild=rebuild,
+        )
+
+    def publish_document_updates(
+        self,
+        knowledge_base: str,
+        documents: Mapping[str, bytes],
+        *,
+        rebuild: bool = False,
+        progress: ProgressCallback | None = None,
+    ) -> IngestResult:
+        """Build and publish a new immutable snapshot without mutating the active one."""
+        name = validate_slug(knowledge_base, "knowledge base")
+        base = self._base_path(name)
+        base.mkdir(parents=True, exist_ok=True)
+        versions = base / "versions"
+        versions.mkdir(exist_ok=True)
+        source_documents = self.active_documents_dir(name)
+        stage = versions / uuid.uuid4().hex
+        stage_documents = stage / "documents"
+        try:
+            if source_documents.exists():
+                shutil.copytree(source_documents, stage_documents)
+            else:
+                stage_documents.mkdir(parents=True)
+            for filename, data in documents.items():
+                safe_name = Path(filename).name
+                if filename != safe_name or "\\" in filename:
+                    raise ValueError(f"invalid document filename: {filename!r}")
+                target = stage_documents / safe_name
+                target.write_bytes(data)
+            return self._publish_snapshot(
+                name,
+                source_documents=stage_documents,
+                rebuild=rebuild,
+                progress=progress,
+                prepared_stage=stage,
+            )
+        except Exception:
+            shutil.rmtree(stage, ignore_errors=True)
+            raise
+
+    def _publish_snapshot(
+        self,
+        name: str,
+        *,
+        source_documents: Path,
+        rebuild: bool,
+        progress: ProgressCallback | None = None,
+        prepared_stage: Path | None = None,
+    ) -> IngestResult:
+        base = self._base_path(name)
+        base.mkdir(parents=True, exist_ok=True)
+        versions = base / "versions"
+        versions.mkdir(exist_ok=True)
+        stage = prepared_stage or versions / uuid.uuid4().hex
+        paths = {
+            "base": stage,
+            "documents": stage / "documents",
+            "chroma": stage / "chroma",
+            "manifest": stage / "manifest.json",
+        }
+        if prepared_stage is None:
+            if source_documents.exists():
+                shutil.copytree(source_documents, paths["documents"])
+            else:
+                paths["documents"].mkdir(parents=True)
         fingerprints = {
             path.relative_to(paths["documents"]).as_posix(): _sha256_file(path)
             for path in iter_supported_paths(
@@ -87,11 +159,13 @@ class KnowledgeBaseManager:
                 supported_extensions=self._supported_extensions,
             )
         }
-        existing = _read_json(paths["manifest"])
+        existing = _read_json(base / "manifest.json")
         signature = self._embedding_signature()
         if existing and existing.get("embedding_signature") != signature and not rebuild:
+            shutil.rmtree(stage, ignore_errors=True)
             raise RebuildRequiredError("embedding configuration changed; ingest again with rebuild=true")
         if existing.get("documents") == fingerprints and not rebuild:
+            shutil.rmtree(stage, ignore_errors=True)
             return IngestResult(
                 knowledge_base=name,
                 documents_seen=len(fingerprints),
@@ -100,40 +174,80 @@ class KnowledgeBaseManager:
                 unchanged=True,
             )
 
-        documents = [
-            document
-            for path in iter_supported_paths(
-                paths["documents"],
-                supported_extensions=self._supported_extensions,
-            )
-            if (
-                document := self._document_loader(
+        loaded_documents = []
+        committed = False
+        document_paths = iter_supported_paths(
+            paths["documents"],
+            supported_extensions=self._supported_extensions,
+        )
+        try:
+            for index, path in enumerate(document_paths, start=1):
+                if progress:
+                    progress(
+                        "parse_document",
+                        f"正在解析第 {index}/{len(document_paths)} 个文档：{path.name}",
+                    )
+                document = self._document_loader(
                     path,
                     source_root=paths["documents"],
                 )
+                if document is not None:
+                    loaded_documents.append(document)
+                if progress:
+                    progress(
+                        "parse_document",
+                        f"第 {index}/{len(document_paths)} 个文档解析完成：{path.name}",
+                    )
+            chunks = chunk_documents(loaded_documents)
+            if progress:
+                progress("embed", f"正在生成 {len(chunks)} 个检索分块的向量。")
+            embeddings = self._get_embeddings()
+            vectors = (
+                embeddings.embed_documents([chunk.page_content for chunk in chunks])
+                if chunks
+                else []
             )
-            is not None
-        ]
-        chunks = chunk_documents(documents)
-        embeddings = self._get_embeddings()
-        vectors = embeddings.embed_documents([chunk.page_content for chunk in chunks]) if chunks else []
-        backend = _ChromaBackend(paths["chroma"])
-        backend.reset()
-        if chunks:
-            backend.upsert(chunks, vectors)
-        manifest = {
-            "namespace": self.namespace,
-            "knowledge_base": name,
-            "documents": fingerprints,
-            "ingested_at": datetime.now(UTC).isoformat(),
-            "embedding_model": self.settings.embedding_model,
-            "embedding_signature": signature,
-        }
-        _write_json(paths["manifest"], manifest)
+            if progress:
+                progress("build_index", "正在构建并验证新的 Chroma 索引。")
+            backend = _ChromaBackend(paths["chroma"])
+            if chunks:
+                backend.upsert(chunks, vectors)
+            if backend.count() != len(chunks):
+                raise RuntimeError("new Chroma index verification failed")
+            version = stage.name
+            manifest = {
+                "namespace": self.namespace,
+                "knowledge_base": name,
+                "active_version": version,
+                "documents": fingerprints,
+                "ingested_at": datetime.now(UTC).isoformat(),
+                "embedding_model": self.settings.embedding_model,
+                "embedding_signature": signature,
+            }
+            _write_json(paths["manifest"], manifest)
+            try:
+                _write_json(base / "manifest.json", manifest)
+            except Exception:
+                shutil.rmtree(stage, ignore_errors=True)
+                raise
+            committed = True
+            try:
+                self._prune_versions(
+                    base,
+                    active_version=version,
+                    previous_version=existing.get("active_version"),
+                )
+            except Exception:
+                # Retention cleanup must never turn a committed publish into failure.
+                pass
+        except Exception:
+            if not committed:
+                shutil.rmtree(stage, ignore_errors=True)
+            raise
         return IngestResult(
             knowledge_base=name,
             documents_seen=len(fingerprints),
-            documents_loaded=len(documents),
+            documents_loaded=len(loaded_documents),
             chunks_written=len(chunks),
         )
 
@@ -177,18 +291,65 @@ class KnowledgeBaseManager:
 
     def documents_dir(self, knowledge_base: str) -> Path:
         name = validate_slug(knowledge_base, "knowledge base")
-        path = self._paths(name)["documents"]
+        path = self._base_path(name) / "documents"
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def active_documents_dir(self, knowledge_base: str) -> Path:
+        name = validate_slug(knowledge_base, "knowledge base")
+        return self._paths(name)["documents"]
+
+    def _base_path(self, name: str) -> Path:
+        return self.root / name
+
     def _paths(self, name: str) -> dict[str, Path]:
-        base = self.root / name
+        base = self._base_path(name)
+        manifest = base / "manifest.json"
+        active_version = _read_json(manifest).get("active_version")
+        snapshot = (
+            base / "versions" / active_version
+            if isinstance(active_version, str)
+            and re.fullmatch(r"[0-9a-f]{32}", active_version)
+            else base
+        )
         return {
-            "base": base,
-            "documents": base / "documents",
-            "chroma": base / "chroma",
-            "manifest": base / "manifest.json",
+            "base": snapshot,
+            "documents": snapshot / "documents",
+            "chroma": snapshot / "chroma",
+            "manifest": manifest,
         }
+
+    def _prune_versions(
+        self,
+        base: Path,
+        *,
+        active_version: str,
+        previous_version: object = None,
+    ) -> None:
+        versions = base / "versions"
+        candidates = sorted(
+            (
+                path
+                for path in versions.iterdir()
+                if path.is_dir() and re.fullmatch(r"[0-9a-f]{32}", path.name)
+            ),
+            key=lambda path: path.stat().st_mtime_ns,
+            reverse=True,
+        )
+        keep = {active_version}
+        if (
+            self.settings.version_retention > 1
+            and isinstance(previous_version, str)
+            and re.fullmatch(r"[0-9a-f]{32}", previous_version)
+        ):
+            keep.add(previous_version)
+        for path in candidates:
+            if len(keep) >= self.settings.version_retention:
+                break
+            keep.add(path.name)
+        for path in candidates:
+            if path.name not in keep:
+                shutil.rmtree(path, ignore_errors=True)
 
     def _embedding_signature(self) -> str:
         value = f"{self.settings.effective_embedding_base_url}|{self.settings.embedding_model}"
@@ -254,12 +415,24 @@ class _ChromaBackend:
             metadata = dict(chunk.metadata)
             metadata["chunk_id"] = chunk_id
             metadatas.append(metadata)
-        collection.upsert(
-            ids=ids,
-            documents=[chunk.page_content for chunk in chunks],
-            metadatas=metadatas,
-            embeddings=vectors,
-        )
+        documents = [chunk.page_content for chunk in chunks]
+        for start in range(0, len(ids), 500):
+            stop = start + 500
+            collection.upsert(
+                ids=ids[start:stop],
+                documents=documents[start:stop],
+                metadatas=metadatas[start:stop],
+                embeddings=vectors[start:stop],
+            )
+
+    def count(self) -> int:
+        try:
+            collection = self.client.get_collection(self.collection_name)
+        except Exception as exc:
+            if "does not exist" in str(exc).lower() or "not found" in str(exc).lower():
+                return 0
+            raise
+        return collection.count()
 
     def query(self, vector: list[float], top_k: int) -> list[dict[str, Any]]:
         collection = self.client.get_or_create_collection(self.collection_name)

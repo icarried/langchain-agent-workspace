@@ -130,6 +130,100 @@
   - 格式规则测试继续验证 DOCX 内写入方正小标宋、黑体、楷体和仿宋字体名称。
 - 最后更新: 2026-07-30
 
+### T-049 增强部门知识库长任务进度与原子索引发布
+
+- 状态: Done
+- 目标: 让多文档和扫描件保存持续返回可见进度，并通过 staging 构建和原子发布
+  避免失败请求破坏当前可检索快照。
+- 验收标准:
+  - SSE 立即返回空间和意图阶段，保存期间逐文档报告下载、归档、解析/OCR、向量与提交状态，
+    并在长步骤中定期发送心跳。
+  - 只有新文档快照、Chroma 和 manifest 全部构建并验证成功后才切换为当前版本；
+    任一阶段失败均保留旧文档和旧索引。
+  - MinIO 原件继续按 SHA-256 幂等归档；失败时明确区分“原件已归档”和“索引未提交”。
+  - 服务端记录带请求 ID 和阶段的真实异常，用户响应保持脱敏。
+  - 覆盖多文档成功、OCR进度、构建失败回滚、旧索引保持、SSE心跳和兼容调用回归。
+- 执行计划:
+  - 为知识库核心增加 staging 构建、验证、原子目录切换和失败清理。
+  - 为部门保存链路增加结构化进度回调和可恢复阶段语义。
+  - 将 SSE 改为后台执行加事件队列，空闲期间发送心跳并记录异常。
+  - 更新运行说明、设计决策和问题日志，完成聚焦及必要全量验证。
+- 验证:
+  - 多文档成功、失败保留旧快照、版本化发布、OCR进度、SSE心跳、失败脱敏和旧协议
+    聚焦测试 28 项通过。
+  - 部门知识库、共享知识库、网关、附件和 OCR 扩大回归 45 项通过。
+  - 全仓 181 项测试通过；全仓 Ruff 和 `git diff --check` 通过。
+- 最后更新: 2026-07-30（完成）
+
+### T-048 将最新 Git 更新部署到机器人管理平台服务器
+
+- 状态: Done
+- 目标: 参照 `local-deployment` 已验证的 Git bundle 和服务器增量构建流程，
+  将 `main` 提交 `6124ed133f39` 部署到 `robotpl-hr-deploy`，保留生产密钥与
+  两个知识库卷。
+- 验收标准:
+  - 服务器精确检出目标提交并构建对应 `linux/amd64` 镜像。
+  - Compose 生产服务全部运行，所有网关模型健康，只有 gateway 发布 `10085:8008`。
+  - GPU Stack、部门 MinIO、平台 backend 到网关及 gateway dry-run 验证通过。
+  - `agent-workspace_knowledge_base_data` 和
+    `agent-workspace_department_kb_minio_data` 均保留，不执行 `down -v`。
+- 验证:
+  - Release `git-6124ed133f39`，镜像
+    `agent-workspace:git-6124ed133f39`，镜像 ID
+    `sha256:81af3098f9f0fe4a6398939af63e505f21a0b57bae926f4ccdf655c61b90148e`。
+  - 12 个 Compose 服务运行，10 个 worker 均 healthy；鉴权模型发现返回 10 个模型。
+  - GPU Stack、部门 MinIO、平台 backend 到网关均返回 200，gateway dry-run 成功。
+  - 只有 gateway 发布 `10085:8008`，两个知识库命名卷均存在。
+- 最后更新: 2026-07-30（完成）
+
+### T-047 修复部门知识库附件原始文件名传递
+
+- 状态: Done
+- 目标: 让部门知识库兼容平台结构化 `file_url` 附件并使用 PG 中的可信原始文件名，
+  同时保留旧 URL、`附件：` 文本和顶层 `files` 调用。
+- 验收标准:
+  - 共享附件解析能保留 URL、原始文件名和来源方式，并优先采用带原名的重复引用。
+  - 部门知识库下载临时 URL 时使用可信原名保存快照和归档对象，不保存签名 URL。
+  - 原有字符串 `files`、正文 URL、旧 content parts 和 dry-run 行为不回归。
+  - 本地 AI 应用平台的“项目交付部知识库”切换到结构化附件模式。
+  - 通过本地平台真实上传并保存一个非 UUID 原名文件，最终知识库显示正确原名。
+- 执行计划:
+  - 扩展共享附件解析并在部门知识库内部统一为附件引用对象。
+  - 补充协议、存储和兼容测试，运行定向回归。
+  - 重建本地 Compose，切换平台模型配置并执行 10081 端到端验证。
+- 验证:
+  - 文件型智能体共享附件回归 61项通过，聚焦 Ruff通过，`git diff --check`通过。
+  - 本地部门 worker和 gateway使用新镜像重建，部门 worker保持 healthy。
+  - 平台模型配置7“项目交付部知识库”已使用
+    `attachment.mode=file_url_content_part`，并固定
+    `knowledge_id=project-delivery`。
+  - 通过 10081以机器人账号真实上传 `原始文件名验证_20260730.txt`，平台返回可信
+    原名和 `file_id`；保存请求识别为 `save`并写入1个分块。
+  - 本地快照、manifest及 `department-kb-project-delivery` bucket均包含正确中文
+    原名；MinIO对象键不含预签名查询参数。
+- 最后更新: 2026-07-30（完成）
+
+### T-046 将 Git 更新部署到机器人管理平台服务器
+
+- 状态: Done
+- 目标: 参照 `local-deployment` 已验证流程，把 `main` 提交 `804858173ca9`
+  以 Git bundle 和服务器构建方式部署到 `robotpl-hr-deploy`，新增公文格式化
+  Agent，同时保留生产密钥和知识库卷。
+- 验收标准:
+  - 服务器精确检出目标提交，构建 `linux/amd64` 镜像且系统字体可被 Fontconfig 识别。
+  - Compose 生产服务全部运行，10 个模型健康，只有 gateway 发布 `10085:8008`。
+  - GPU Stack、部门 MinIO、平台 backend 到网关及 gateway dry-run 验证通过。
+  - `agent-workspace_knowledge_base_data` 和
+    `agent-workspace_department_kb_minio_data` 均保留，不执行 `down -v`。
+- 验证:
+  - Release `git-804858173ca9`，镜像
+    `agent-workspace:git-804858173ca9`，镜像 ID
+    `sha256:2851099367a0e241a3a3ce7938d852cc38503f4b831c5779ef37b02d522490e6`。
+  - 12 个 Compose 服务运行，10 个 worker 均 healthy；鉴权模型发现返回 10 个模型。
+  - `fc-cache` 和公文字体匹配通过；GPU Stack、部门 MinIO、平台到网关均返回 200。
+  - 仅 gateway 发布 `10085`，两个知识库命名卷均存在。
+- 最后更新: 2026-07-30
+
 ### T-045 创建确定性公文格式化智能体
 
 - 状态: Done

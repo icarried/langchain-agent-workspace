@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
+from collections.abc import Callable
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +18,15 @@ class Intent(StrEnum):
 class IntentDecision(BaseModel):
     intent: Intent
     confidence: float = Field(default=0, ge=0, le=1)
+
+
+@dataclass(frozen=True, slots=True)
+class ProgressEvent:
+    stage: str
+    message: str
+
+
+ProgressCallback = Callable[[ProgressEvent], None]
 
 
 class SavedDocument(BaseModel):
