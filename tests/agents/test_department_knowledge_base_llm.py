@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from src.agents.openai_compatible_inputs import AttachmentReference
 from src.agents.department_knowledge_base import openai_compatible_api as api
 from src.agents.department_knowledge_base.departments import DEPARTMENTS, get_department
 from src.agents.department_knowledge_base.document_loader import AdaptiveDocumentLoader
@@ -16,6 +17,7 @@ from src.agents.department_knowledge_base.object_store import (
 from src.agents.department_knowledge_base.schemas import Intent, IntentDecision
 from src.agents.department_knowledge_base.service import DepartmentKnowledgeBaseAgent
 from src.agents.department_knowledge_base.settings import DepartmentKnowledgeBaseSettings
+from src.agents.department_knowledge_base.storage import prepare_sources
 from src.knowledge_base.schemas import KnowledgeAnswer
 
 
@@ -210,6 +212,80 @@ def test_api_requires_scope_and_supports_extra_files_and_dry_run(
     assert "dry-run" in body["choices"][0]["message"]["content"]
 
 
+def test_api_preserves_structured_content_part_filename() -> None:
+    request = api.ChatCompletionRequest(
+        model=api.MODEL_ID,
+        knowledge_id="project-delivery",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "请保存到知识库"},
+                    {
+                        "type": "file_url",
+                        "file_url": {
+                            "url": "https://minio.example/8aa79bbe.pdf?signature=1",
+                            "filename": "项目交付管理制度.pdf",
+                        },
+                    },
+                ],
+            }
+        ],
+    )
+
+    text, sources = api._last_user_input(request)
+
+    assert text == "请保存到知识库"
+    assert sources == [
+        AttachmentReference(
+            url="https://minio.example/8aa79bbe.pdf?signature=1",
+            filename="项目交付管理制度.pdf",
+            source_kind="file_url",
+        )
+    ]
+
+
+def test_api_keeps_legacy_file_and_prefers_structured_duplicate_filename() -> None:
+    url = "https://minio.example/8aa79bbe.pdf?signature=1"
+    request = api.ChatCompletionRequest(
+        model=api.MODEL_ID,
+        knowledge_id="project-delivery",
+        files=[
+            url,
+            {"url": url, "filename": "项目交付管理制度.pdf"},
+        ],
+        messages=[{"role": "user", "content": "请保存到知识库"}],
+    )
+
+    _, sources = api._last_user_input(request)
+
+    assert len(sources) == 1
+    assert sources[0].filename == "项目交付管理制度.pdf"
+
+
+def test_prepare_sources_uses_original_filename_instead_of_uuid_url(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.agents.department_knowledge_base.storage.read_remote_file",
+        lambda _url: (b"%PDF-test", "application/pdf"),
+    )
+
+    prepared = prepare_sources(
+        [
+            AttachmentReference(
+                url="https://minio.example/8aa79bbe.pdf?signature=1",
+                filename="../项目交付管理制度.pdf",
+                source_kind="file_url",
+            )
+        ],
+        DepartmentKnowledgeBaseSettings(),
+    )
+
+    assert prepared[0].filename == "项目交付管理制度.pdf"
+    assert prepared[0].data == b"%PDF-test"
+
+
 def test_api_stream_uses_reasoning_for_progress(tmp_path: Path, monkeypatch) -> None:
     selected, _ = _agent(tmp_path)
     monkeypatch.setattr(api, "agent", selected)
@@ -249,7 +325,7 @@ def test_signed_attachment_url_is_not_sent_as_intent_text() -> None:
 
     assert "X-Amz-Signature" not in text
     assert "[附件URL]" in text
-    assert sources[0].endswith("X-Amz-Signature=secret")
+    assert sources[0].url.endswith("X-Amz-Signature=secret")
 
 
 def test_minio_archive_uses_department_bucket_and_content_address(

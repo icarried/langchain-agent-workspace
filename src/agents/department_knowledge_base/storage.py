@@ -4,9 +4,11 @@ import hashlib
 import mimetypes
 import re
 import uuid
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.agents.openai_compatible_inputs import AttachmentReference
 from src.agents.remote_files import is_http_url, read_remote_file, remote_filename
 
 from .document_loader import SUPPORTED_EXTENSIONS
@@ -22,7 +24,7 @@ class PreparedDocument:
 
 
 def prepare_sources(
-    sources: list[str],
+    sources: list[str | AttachmentReference],
     settings: DepartmentKnowledgeBaseSettings,
 ) -> list[PreparedDocument]:
     if len(sources) > settings.max_files_per_request:
@@ -31,14 +33,20 @@ def prepare_sources(
         )
     prepared: list[PreparedDocument] = []
     seen: dict[str, str] = {}
-    for source in sources:
-        if is_http_url(source):
-            data, content_type = read_remote_file(source)
-            filename = remote_filename(source)
+    for raw_source in sources:
+        source = (
+            raw_source
+            if isinstance(raw_source, AttachmentReference)
+            else AttachmentReference(url=raw_source, source_kind="legacy")
+        )
+        location = source.url
+        if is_http_url(location):
+            data, content_type = read_remote_file(location)
+            filename = source.filename or remote_filename(location)
         else:
             if not settings.allow_local_files:
                 raise ValueError("local file paths are disabled; use an HTTP(S) attachment URL")
-            path = Path(source).resolve()
+            path = Path(location).resolve()
             if not path.is_file():
                 raise ValueError(f"local attachment does not exist: {path.name}")
             data = path.read_bytes()
@@ -86,7 +94,8 @@ def persist_documents(
 
 
 def _safe_filename(filename: str, content_type: str) -> str:
-    name = Path(filename).name.strip()
+    normalized = unicodedata.normalize("NFC", filename)
+    name = Path(normalized.replace("\\", "/")).name.strip()
     suffix = Path(name).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
         guessed = mimetypes.guess_extension(content_type.split(";", 1)[0].strip())

@@ -5,6 +5,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from src.agents.openai_compatible_inputs import AttachmentReference
 from src.document_ocr import GPUStackPaddleOCRVL, OCRProvider
 from src.knowledge_base.manager import KnowledgeBaseManager
 from src.knowledge_base.settings import KnowledgeBaseSettings
@@ -26,7 +27,7 @@ from .storage import persist_documents, prepare_sources
 class DepartmentKnowledgeBaseState(TypedDict, total=False):
     knowledge_id: str
     text: str
-    sources: list[str]
+    sources: list[AttachmentReference]
     top_k: int | None
     dry_run: bool
     department: Department
@@ -83,7 +84,11 @@ class DepartmentKnowledgeBaseRuntime:
             self._object_store = MinioDepartmentObjectStore(self.settings)
         return self._object_store
 
-    def save(self, department: Department, sources: list[str]) -> AgentResult:
+    def save(
+        self,
+        department: Department,
+        sources: list[str | AttachmentReference],
+    ) -> AgentResult:
         if not sources:
             return self.result(
                 department,

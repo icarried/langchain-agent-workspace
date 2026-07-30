@@ -46,18 +46,31 @@ Model: department-knowledge-base-agent
 {
   "model": "department-knowledge-base-agent",
   "knowledge_id": "technical-support",
-  "files": [
-    "https://upload-minio.example/guide.pdf?X-Amz-Signature=..."
-  ],
   "messages": [
-    {"role": "user", "content": "请把这份手册保存到知识库"}
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "请把这份手册保存到知识库"},
+        {
+          "type": "file_url",
+          "file_url": {
+            "url": "https://upload-minio.example/uuid.pdf?X-Amz-Signature=...",
+            "filename": "技术支撑手册.pdf"
+          }
+        }
+      ]
+    }
   ],
   "stream": true
 }
 ```
 
-也支持 OpenAI content parts 的 `file_url.url` / `image_url.url` 和消息文本中的 HTTP(S)
-附件 URL。`files`、`knowledge_id` 都是本 worker 的 OpenAI-compatible 扩展字段。
+结构化 `file_url.filename` 是保存业务原名的首选入口。worker 下载临时 URL，但以
+经过 basename、Unicode NFC、控制字符和长度处理后的原名保存快照与原件；不会持久化
+预签名 URL 或查询签名。也继续兼容 `image_url.url`、消息文本 HTTP(S) URL，以及
+顶层字符串或 `{url, filename}` 对象形式的 `files`。重复 URL 同时从旧、新入口出现时
+只保留一次，并优先采用带原名的引用。`files`、`knowledge_id` 都是本 worker 的
+OpenAI-compatible 扩展字段。
 平台应在八个模型配置中固定不同 `knowledge_id`，不要让部门用户编辑该字段。
 
 Qwen3.5 把请求分类为：

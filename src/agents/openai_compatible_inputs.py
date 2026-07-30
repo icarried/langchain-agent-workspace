@@ -2,24 +2,40 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Any
 
 
+@dataclass(frozen=True, slots=True)
+class AttachmentReference:
+    url: str
+    filename: str | None = None
+    media_type: str | None = None
+    source_kind: str = "unknown"
+
+
 def message_content_to_text_and_urls(content: Any) -> tuple[str, list[str]]:
+    text, attachments = message_content_to_text_and_attachments(content)
+    return text, [item.url for item in attachments]
+
+
+def message_content_to_text_and_attachments(
+    content: Any,
+) -> tuple[str, list[AttachmentReference]]:
     if isinstance(content, str):
         return content, []
     if isinstance(content, dict):
-        return _message_part_to_text_and_urls(content)
+        return _message_part_to_text_and_attachments(content)
     if isinstance(content, list):
         text_parts: list[str] = []
-        urls: list[str] = []
+        attachments: list[AttachmentReference] = []
         for item in content:
             if isinstance(item, dict):
-                text, item_urls = _message_part_to_text_and_urls(item)
+                text, item_attachments = _message_part_to_text_and_attachments(item)
                 if text:
                     text_parts.append(text)
-                urls.extend(item_urls)
-        return "\n".join(text_parts), dedupe(urls)
+                attachments.extend(item_attachments)
+        return "\n".join(text_parts), dedupe_attachment_references(attachments)
     return "", []
 
 
@@ -144,9 +160,61 @@ def dedupe(values: list[str]) -> list[str]:
     return result
 
 
-def _message_part_to_text_and_urls(part: dict[str, Any]) -> tuple[str, list[str]]:
+def attachment_reference_from_value(
+    value: Any,
+    *,
+    source_kind: str,
+) -> AttachmentReference | None:
+    if isinstance(value, str):
+        url = value.strip()
+        if _is_http_url(url):
+            return AttachmentReference(url=url, source_kind=source_kind)
+        return None
+    if not isinstance(value, dict):
+        return None
+
+    url = _extract_url_value(value.get("url"))
+    if not url:
+        url = _extract_url_value(value.get("file_url"))
+    if not url:
+        return None
+    filename = value.get("filename")
+    media_type = value.get("mime_type") or value.get("media_type")
+    return AttachmentReference(
+        url=url,
+        filename=filename.strip() if isinstance(filename, str) and filename.strip() else None,
+        media_type=(
+            media_type.strip()
+            if isinstance(media_type, str) and media_type.strip()
+            else None
+        ),
+        source_kind=source_kind,
+    )
+
+
+def dedupe_attachment_references(
+    values: list[AttachmentReference],
+) -> list[AttachmentReference]:
+    positions: dict[str, int] = {}
+    result: list[AttachmentReference] = []
+    for value in values:
+        key = value.url.lower()
+        position = positions.get(key)
+        if position is None:
+            positions[key] = len(result)
+            result.append(value)
+            continue
+        existing = result[position]
+        if not existing.filename and value.filename:
+            result[position] = value
+    return result
+
+
+def _message_part_to_text_and_attachments(
+    part: dict[str, Any],
+) -> tuple[str, list[AttachmentReference]]:
     text_parts: list[str] = []
-    urls: list[str] = []
+    attachments: list[AttachmentReference] = []
     if isinstance(part.get("text"), str):
         text_parts.append(part["text"])
     if isinstance(part.get("input_text"), str):
@@ -156,12 +224,37 @@ def _message_part_to_text_and_urls(part: dict[str, Any]) -> tuple[str, list[str]
         value = part.get(key)
         url = _extract_url_value(value)
         if url:
-            urls.append(url)
+            metadata = value if isinstance(value, dict) else {}
+            filename = metadata.get("filename") or part.get("filename")
+            media_type = (
+                metadata.get("mime_type")
+                or metadata.get("media_type")
+                or part.get("mime_type")
+                or part.get("media_type")
+            )
+            attachments.append(
+                AttachmentReference(
+                    url=url,
+                    filename=(
+                        filename.strip()
+                        if isinstance(filename, str) and filename.strip()
+                        else None
+                    ),
+                    media_type=(
+                        media_type.strip()
+                        if isinstance(media_type, str) and media_type.strip()
+                        else None
+                    ),
+                    source_kind=key,
+                )
+            )
 
     url = _extract_url_value(part.get("url"))
     if url:
-        urls.append(url)
-    return "\n".join(text_parts), dedupe(urls)
+        reference = attachment_reference_from_value(part, source_kind="url")
+        if reference:
+            attachments.append(reference)
+    return "\n".join(text_parts), dedupe_attachment_references(attachments)
 
 
 def _extract_url_value(value: Any) -> str:

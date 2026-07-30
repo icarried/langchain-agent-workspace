@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.agents.openai_compatible_inputs import AttachmentReference
+
 from .graph import DepartmentKnowledgeBaseRuntime, build_graph
 from .schemas import AgentResult
 
@@ -17,7 +19,7 @@ class DepartmentKnowledgeBaseAgent:
         *,
         knowledge_id: str,
         text: str,
-        sources: list[str] | None = None,
+        sources: list[str | AttachmentReference] | None = None,
         top_k: int | None = None,
         dry_run: bool = False,
     ) -> AgentResult:

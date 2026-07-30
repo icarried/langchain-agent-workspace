@@ -243,3 +243,14 @@
 - 负面影响: 首版不提供独立持久化任务数据库；worker重启后不能通过自身恢复旧任务状态。最终下载 URL直接指向 ComfyUI，因此调用方必须能访问其 public base URL。
 - 失败模式与缓解: ComfyUI不可用时 worker健康检查返回503并从网关模型列表隐藏，不阻塞其他 Agent；提交校验失败时返回长度受限的节点错误；长任务受服务端最大等待时间限制，超时不取消ComfyUI任务。
 - 替代方案: 保留独立 Videos API（部署复杂度较高）；把视频逻辑放入 gateway（破坏路由层职责和故障隔离）；把视频 Base64塞入 Chat Completion（大文件内存与平台兼容风险过高）。
+## 2026-07-30 - 部门知识库采用结构化附件原名并保留旧入口
+
+- 决策: 共享 OpenAI-compatible 输入层新增内部 `AttachmentReference`，保留附件 URL、
+  原始文件名、MIME 和来源方式；部门知识库优先消费 `file_url.filename`，同时继续
+  接受旧字符串 `files`、正文 URL、`附件：` 文本和既有 content parts。
+- 原因: AI 应用平台已用 PG `file_mapping.file_id` 保存可信原名和对象位置，并可在
+  转发前重新签发 URL；URL末段是对象存储名称，不能承担业务文件名语义。
+- 影响: 平台附件模式可使用 `file_url_content_part`。知识库仅把 URL用于本次下载，
+  不保存其查询签名；快照、manifest和归档对象使用校验后的原始文件名。
+- 存储边界: 平台 MinIO仍是上传传输源，知识库 MinIO仍保存长期原件，不合并两个
+  MinIO，也不在知识库目录中长期引用平台预签名 URL。

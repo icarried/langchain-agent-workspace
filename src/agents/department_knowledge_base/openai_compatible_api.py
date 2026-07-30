@@ -18,8 +18,10 @@ from src.agents.openai_compatible import (
     model_list,
 )
 from src.agents.openai_compatible_inputs import (
-    dedupe,
-    message_content_to_text_and_urls,
+    AttachmentReference,
+    attachment_reference_from_value,
+    dedupe_attachment_references,
+    message_content_to_text_and_attachments,
 )
 from src.document_ocr.gpu_stack import OCRRequestError
 from src.knowledge_base.manager import RebuildRequiredError
@@ -45,7 +47,7 @@ class ChatCompletionRequest(OpenAIChatCompletionRequest):
     model: str = MODEL_ID
     messages: list[ChatMessage] = Field(default_factory=list)
     knowledge_id: str | None = None
-    files: list[str] = Field(default_factory=list)
+    files: list[str | dict[str, Any]] = Field(default_factory=list)
     top_k: int | None = Field(default=None, ge=1, le=20)
 
 
@@ -131,20 +133,35 @@ def create_chat_completion(request: ChatCompletionRequest) -> Any:
     return _completion(request.model, result.content, result=result)
 
 
-def _last_user_input(request: ChatCompletionRequest) -> tuple[str, list[str]]:
+def _last_user_input(
+    request: ChatCompletionRequest,
+) -> tuple[str, list[AttachmentReference]]:
     text = ""
-    urls: list[str] = []
+    attachments: list[AttachmentReference] = []
     for message in reversed(request.messages):
         if message.role != "user":
             continue
-        text, content_urls = message_content_to_text_and_urls(message.content)
-        urls.extend(content_urls)
+        text, content_attachments = message_content_to_text_and_attachments(
+            message.content
+        )
+        attachments.extend(content_attachments)
         break
-    urls.extend(_http_urls(text))
-    urls.extend(request.files)
-    return _redact_http_urls(text).strip(), dedupe(
-        [item.strip() for item in urls if item.strip()]
+    attachments.extend(
+        AttachmentReference(url=url, source_kind="message_text")
+        for url in _http_urls(text)
     )
+    attachments.extend(
+        reference
+        for item in request.files
+        if (
+            reference := attachment_reference_from_value(
+                item,
+                source_kind="top_level_files",
+            )
+        )
+        is not None
+    )
+    return _redact_http_urls(text).strip(), dedupe_attachment_references(attachments)
 
 
 def _http_urls(text: str) -> list[str]:
@@ -158,7 +175,7 @@ def _redact_http_urls(text: str) -> str:
     return re.sub(r"https?://[^\s\"'<>，]+", "[附件URL]", text)
 
 
-def _is_readiness_probe(text: str, sources: list[str]) -> bool:
+def _is_readiness_probe(text: str, sources: list[AttachmentReference]) -> bool:
     return not sources and text.strip().lower() in {
         "",
         "hello",
@@ -172,7 +189,7 @@ def _is_readiness_probe(text: str, sources: list[str]) -> bool:
 def _stream_request(
     request: ChatCompletionRequest,
     text: str,
-    sources: list[str],
+    sources: list[AttachmentReference],
 ) -> Generator[str, None, None]:
     completion_id, created = _stream_identity()
     yield _sse_delta(completion_id, created, request.model, role="assistant")
