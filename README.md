@@ -26,8 +26,9 @@
 - 已建立统一 OpenAI-compatible 网关：生产环境只发布 `8008`，按模型 ID 路由到九个相互隔离的 worker，本机开发可由单命令监管启动。
 - 已接入 GPU Stack统一模型端点，并新增支持文生图、单图编辑和连续对话编辑的 `image-generation-agent`。
 - 已新增直接调用 ComfyUI LTX 2.3工作流的 `comfyui-video-generation-agent`，不依赖额外 Videos API。
+- 已新增 `comfyui-image-to-video-agent`，支持单图输入、视觉提示词改写和受限的自然语言视频参数。
 - 已将知识库重做为工作区级 `src/knowledge_base/` 可复用核心，按 agent namespace 和知识库名称隔离 Chroma 数据，不兼容旧 primary/secondary 数据。
-- 已新增八部门隔离知识库智能体，通过 `knowledge_id` 在同一模型接口选择固定部门空间，并使用本项目专属 MinIO 保存长期原件。
+- 已新增八部门及“公司规定”隔离知识库智能体，通过 `knowledge_id` 在同一模型接口选择固定知识空间，并使用本项目专属 MinIO 保存长期原件。
 
 ## 推荐目录
 

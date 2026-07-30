@@ -1,12 +1,13 @@
 # 机器人管理平台服务器 Docker 部署
 
 本文档说明如何把工作区统一智能体网关部署到机器人管理平台服务器。目标主机通过
-WSL `Ubuntu` 中的 SSH 别名 `robotpl` 访问，运行目录固定为
-`/opt/agent-workspace`。
+WSL `Ubuntu` 中的 SSH 别名 `robotpl` 访问，Compose 和源码运行目录固定为
+`/opt/agent-workspace/source`；生产环境文件位于 `/opt/agent-workspace/.env` 和
+`/opt/agent-workspace/.env.local`。
 
 ## 部署边界
 
-- 发布工作区 `linux/amd64` 镜像，运行 gateway 和九个隔离 worker；同时发布固定版本
+- 发布工作区 `linux/amd64` 镜像，运行 gateway 和十一个隔离 worker；同时发布固定版本
   `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` 镜像。
 - 只发布宿主机端口 `10085` 到容器网关 `8008`；worker 仅在 Compose 网络内监听
   `8080`。
@@ -20,10 +21,11 @@ WSL `Ubuntu` 中的 SSH 别名 `robotpl` 访问，运行目录固定为
 
 ```text
 /opt/agent-workspace/
-├── compose.yaml
 ├── .env
 ├── .env.local
 ├── current-release
+├── source/
+│   └── compose.yaml
 └── releases/
     └── <release-id>/
         ├── compose.yaml
@@ -82,6 +84,8 @@ GPU_STACK_CONTAINER_PROXY_URL=
 DEPARTMENT_KB_MINIO_ACCESS_KEY=<项目独立随机账号>
 DEPARTMENT_KB_MINIO_SECRET_KEY=<项目独立强密码>
 DEPARTMENT_KB_OBJECT_STORE_ENABLED=true
+COMFYUI_I2V_BASE_URL=http://10.180.26.16:8188
+COMFYUI_I2V_PUBLIC_BASE_URL=http://10.180.26.16:8188
 ```
 
 知识库 chat/embedding key 可与 GPU Stack key 使用同一凭证，但仍通过
@@ -96,7 +100,7 @@ sha256sum -c SHA256SUMS
 gzip -dc agent-workspace-linux-amd64.tar.gz | docker load
 gzip -dc department-kb-minio-linux-amd64.tar.gz | docker load
 
-cd /opt/agent-workspace
+cd /opt/agent-workspace/source
 docker compose config --quiet
 docker compose up -d --no-build --pull never
 ```
@@ -135,6 +139,6 @@ docker compose up -d --no-build --pull never
 ## 备份要求
 
 `knowledge_base_data` 保存 Chroma与可重复解析的本地快照，
-`department_kb_minio_data` 保存八部门长期原件；两者都必须纳入服务器备份。备份前
+`department_kb_minio_data` 保存九个知识空间的长期原件；两者都必须纳入服务器备份。备份前
 应暂停 `department-knowledge-base` worker，避免一次保存请求跨两个卷时取得不一致
-快照。恢复后先验证 MinIO健康和八个 bucket，再对受影响知识库执行显式重建索引。
+快照。恢复后先验证 MinIO健康和已使用的 bucket，再对受影响知识库执行显式重建索引。

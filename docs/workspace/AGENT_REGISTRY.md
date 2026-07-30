@@ -43,6 +43,18 @@
 - 关联任务: T-043
 - 备注: 最终下载 URL 直接指向 ComfyUI `/view`；调用方必须能访问 public base URL。worker 不公开额外宿主机端口。
 
+### comfyui-image-to-video
+
+- 状态: Ready
+- 用途: 使用 LTX 2.3 I2V工作流把单张图片生成视频；视觉Qwen3.5改写动作和镜头提示词，服务端限制尺寸、时长、FPS和seed。
+- 源码路径: `src/agents/comfyui_image_to_video/`
+- 运行入口: `python -m src.agents.comfyui_image_to_video "<prompt>" --image <url-or-data-url> --dry-run`
+- OpenAI-compatible入口: 统一网关 `http://<host>:8008/v1`，模型 ID `comfyui-image-to-video-agent`。
+- 输入限制: 单张图片，默认最大20 MiB；时长最多15秒、FPS最多30、尺寸只接受 `COMFYUI_I2V_ALLOWED_SIZES`。
+- 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`和 `COMFYUI_I2V_*`。
+- 关联任务: T-052
+- 备注: LLM只改写提示词，显式 `video` 参数优先并由服务端硬校验；worker不公开额外宿主机端口。
+
 ### image-generation
 
 - 状态: In Development

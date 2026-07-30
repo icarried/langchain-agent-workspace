@@ -50,7 +50,8 @@ Facts in this file must name the observer. A failed command from the Codex sandb
 - Windows path: `E:\My_sorcode\--创建智能体工作空间--`
 - WSL distro: `Ubuntu`
 - WSL path: `/mnt/e/My_sorcode/--创建智能体工作空间--`
-- Remote path: `/opt/agent-workspace` on `robotpl`
+- Remote source/Compose path: `/opt/agent-workspace/source` on `robotpl`; production
+  environment files remain under `/opt/agent-workspace/`
 - Path conversion command: `wsl.exe -d Ubuntu -- wslpath -a 'E:\My_sorcode\--创建智能体工作空间--'`
 
 | Purpose | Windows path | WSL/Linux path | Container path | Notes |
@@ -74,7 +75,7 @@ Record where each command must run. Do not mix shell syntax across rows.
 | Start batch resume LLM API | Windows PowerShell | Project root | `uvicorn src.agents.batch_resume_review_llm.openai_compatible_api:app --host 0.0.0.0 --port 8006` | `GET http://127.0.0.1:8006/v1/models`; do not run at the same time as its REST API |
 | Start knowledge base worker for debugging | Windows PowerShell | Project root | `uvicorn src.agents.langchain_knowledge_base.openai_compatible_api:app --host 127.0.0.1 --port 18008` | `Invoke-RestMethod http://127.0.0.1:18008/health` |
 | Start unified Compose | WSL `Ubuntu` | `/mnt/e/My_sorcode/--创建智能体工作空间--` | `DOCKER_BUILDKIT=0 docker compose build gateway` then `docker compose up -d` | `docker compose ps`; only gateway publishes `8008` |
-| Inspect deployed unified Compose | Remote host `robotpl` | `/opt/agent-workspace` | `docker compose ps` | Seven workers healthy; gateway publishes `10085:8008` |
+| Inspect deployed unified Compose | Remote host `robotpl` | `/opt/agent-workspace/source` | `docker compose ps` | Gateway publishes `10085:8008`; verify all configured workers are healthy |
 | Run all agent tests | Windows PowerShell | Project root | `python -m pytest tests\agents -q` | Test result output |
 | Run focused tests | Windows PowerShell | Project root | `python -m pytest tests\agents\test_<agent>.py -q` | Test result output |
 | Run linters | Windows PowerShell | Project root | `ruff check .` | Ruff success |

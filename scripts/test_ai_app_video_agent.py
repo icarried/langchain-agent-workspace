@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import httpx
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8008/v1"
 DEFAULT_MODEL = "comfyui-video-generation-agent"
+DEFAULT_I2V_MODEL = "comfyui-image-to-video-agent"
 DEFAULT_PROMPT = "生成一个猫咪视频"
 DOWNLOAD_LINK_PATTERN = re.compile(r"\[下载视频\]\((https?://[^)]+)\)")
 FAILURE_MARKERS = (
@@ -69,19 +71,29 @@ def stream_model_chat(
     base_url: str,
     model: str,
     prompt: str,
+    image: str | None = None,
+    video_options: dict[str, Any] | None = None,
     api_key: str | None = None,
     max_wait_seconds: float = 1800,
     on_delta: Callable[[str, str], None] | None = None,
 ) -> StreamResult:
     url = chat_completions_url(base_url)
-    payload = {
+    content: str | list[dict[str, Any]] = prompt
+    if image:
+        content = [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": image}},
+        ]
+    payload: dict[str, Any] = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
         "stream": True,
         "thinking": True,
         "wait_for_completion": True,
         "max_wait_seconds": max_wait_seconds,
     }
+    if video_options:
+        payload["video"] = video_options
     headers = {
         "Accept": "text/event-stream",
         "Content-Type": "application/json",
@@ -160,7 +172,7 @@ def extract_download_url(
     if match:
         return match.group(1)
     if isinstance(video, dict):
-        value = video.get("content_url")
+        value = video.get("source_url") or video.get("content_url")
         if isinstance(value, str) and value:
             return value
     return None
@@ -198,7 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default=os.getenv("VIDEO_AGENT_MODEL", DEFAULT_MODEL),
+        default=os.getenv("VIDEO_AGENT_MODEL"),
     )
     parser.add_argument(
         "--api-key",
@@ -206,6 +218,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="可选；网关未启用鉴权时不需要",
     )
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
+    parser.add_argument(
+        "--image",
+        help="图生视频输入图片：本地路径、HTTP(S) URL或Base64 data URL",
+    )
+    parser.add_argument("--size")
+    parser.add_argument("--seconds", type=int)
+    parser.add_argument("--fps", type=int)
+    parser.add_argument("--seed", type=int)
     parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument("--output", type=Path, help="可选：下载视频到指定路径")
     return parser
@@ -215,16 +235,43 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     timeout = httpx.Timeout(args.timeout, connect=min(30, args.timeout))
     try:
+        image = _normalize_image_argument(args.image) if args.image else None
+        model = args.model or (DEFAULT_I2V_MODEL if image else DEFAULT_MODEL)
+        video_options = {
+            key: value
+            for key, value in {
+                "size": args.size,
+                "seconds": args.seconds,
+                "fps": args.fps,
+                "seed": args.seed,
+            }.items()
+            if value is not None
+        }
         with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+            summary_content: Any = args.prompt
+            if image:
+                summary_content = [
+                    {"type": "text", "text": args.prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "<base64 image omitted>"
+                            if image.startswith("data:")
+                            else image
+                        },
+                    },
+                ]
             request_summary = {
                 "url": chat_completions_url(args.base_url),
-                "model": args.model,
-                "messages": [{"role": "user", "content": args.prompt}],
+                "model": model,
+                "messages": [{"role": "user", "content": summary_content}],
                 "stream": True,
                 "thinking": True,
                 "wait_for_completion": True,
                 "max_wait_seconds": args.timeout,
             }
+            if video_options:
+                request_summary["video"] = video_options
             print("请求参数：")
             print(json.dumps(request_summary, ensure_ascii=False, indent=2))
             current_channel: str | None = None
@@ -240,8 +287,10 @@ def main(argv: list[str] | None = None) -> int:
             result = stream_model_chat(
                 client,
                 base_url=args.base_url,
-                model=args.model,
+                model=model,
                 prompt=args.prompt,
+                image=image,
+                video_options=video_options,
                 api_key=args.api_key,
                 max_wait_seconds=args.timeout,
                 on_delta=print_delta,
@@ -260,6 +309,29 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print("\n测试成功：OpenAI兼容视频模型调用已完成。")
     return 0
+
+
+def _normalize_image_argument(value: str) -> str:
+    if value.startswith(("http://", "https://", "data:image/")):
+        return value
+    path = Path(value)
+    if not path.is_file():
+        raise ModelTestError(f"输入图片不存在：{path}")
+    data = path.read_bytes()
+    if len(data) > 20 * 1024 * 1024:
+        raise ModelTestError("输入图片超过20 MiB")
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime = "image/png"
+    elif data.startswith(b"\xff\xd8\xff"):
+        mime = "image/jpeg"
+    elif len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        mime = "image/webp"
+    elif data.startswith((b"GIF87a", b"GIF89a")):
+        mime = "image/gif"
+    else:
+        raise ModelTestError("输入文件不是支持的PNG、JPEG、WebP或GIF图片")
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
 
 
 def _openai_error(error: dict[str, Any]) -> str:
