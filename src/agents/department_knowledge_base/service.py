@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.agents.openai_compatible_inputs import AttachmentReference
 
 from .graph import DepartmentKnowledgeBaseRuntime, build_graph
-from .schemas import AgentResult
+from .schemas import AgentResult, ProgressCallback
 
 
 class DepartmentKnowledgeBaseAgent:
@@ -22,6 +22,7 @@ class DepartmentKnowledgeBaseAgent:
         sources: list[str | AttachmentReference] | None = None,
         top_k: int | None = None,
         dry_run: bool = False,
+        progress: ProgressCallback | None = None,
     ) -> AgentResult:
         state = self.graph.invoke(
             {
@@ -30,6 +31,7 @@ class DepartmentKnowledgeBaseAgent:
                 "sources": sources or [],
                 "top_k": top_k,
                 "dry_run": dry_run,
+                "progress": progress,
             }
         )
         return state["result"]

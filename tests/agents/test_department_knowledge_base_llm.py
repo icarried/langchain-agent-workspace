@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import time
 
 from fastapi.testclient import TestClient
 
@@ -14,7 +15,12 @@ from src.agents.department_knowledge_base.object_store import ObjectLocation
 from src.agents.department_knowledge_base.object_store import (
     MinioDepartmentObjectStore,
 )
-from src.agents.department_knowledge_base.schemas import Intent, IntentDecision
+from src.agents.department_knowledge_base.schemas import (
+    AgentResult,
+    Intent,
+    IntentDecision,
+    ProgressEvent,
+)
 from src.agents.department_knowledge_base.service import DepartmentKnowledgeBaseAgent
 from src.agents.department_knowledge_base.settings import DepartmentKnowledgeBaseSettings
 from src.agents.department_knowledge_base.storage import prepare_sources
@@ -40,8 +46,25 @@ class FakeManager:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def active_documents_dir(self, knowledge_base: str) -> Path:
+        return self.documents_dir(knowledge_base)
+
     def ingest(self, knowledge_base: str):
-        return SimpleNamespace(chunks_written=1)
+        return SimpleNamespace(chunks_written=1, unchanged=False)
+
+    def publish_document_updates(
+        self,
+        knowledge_base: str,
+        documents: dict[str, bytes],
+        *,
+        progress=None,
+    ):
+        directory = self.documents_dir(knowledge_base)
+        for filename, data in documents.items():
+            (directory / filename).write_bytes(data)
+        if progress:
+            progress("embed", "正在生成 1 个检索分块的向量。")
+        return SimpleNamespace(chunks_written=1, unchanged=False)
 
     def answer(self, knowledge_base: str, question: str, *, top_k: int | None = None):
         self.answer_calls.append((knowledge_base, question))
@@ -113,6 +136,29 @@ def test_save_intent_persists_only_in_selected_department(tmp_path: Path) -> Non
     assert not (tmp_path / "finance").exists()
 
 
+def test_multi_document_save_reports_stages_in_order(tmp_path: Path) -> None:
+    selected, _ = _agent(tmp_path)
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("第一份制度", encoding="utf-8")
+    second.write_text("第二份制度", encoding="utf-8")
+    events: list[ProgressEvent] = []
+
+    selected.invoke(
+        knowledge_id="marketing",
+        text="请保存到知识库",
+        sources=[str(first), str(second)],
+        progress=events.append,
+    )
+
+    messages = [event.message for event in events]
+    assert any("第 1/2 个附件下载并校验完成" in item for item in messages)
+    assert any("第 2/2 个附件下载并校验完成" in item for item in messages)
+    assert any(event.stage == "wait_for_lock" for event in events)
+    assert any(event.stage == "write_lock" for event in events)
+    assert events[-1].stage == "commit"
+
+
 def test_query_attachment_is_not_saved_and_prompt_cannot_switch_scope(
     tmp_path: Path,
 ) -> None:
@@ -176,6 +222,18 @@ def test_adaptive_loader_uses_ocr_for_image(tmp_path: Path) -> None:
     assert document.page_content == "扫描页文字"
     assert document.metadata["source"] == "scan.png"
     assert ocr.calls == ["scan.png"]
+
+
+def test_adaptive_loader_reports_ocr_progress(tmp_path: Path) -> None:
+    image = tmp_path / "scan.png"
+    image.write_bytes(b"fake-png")
+    events: list[str] = []
+    from src.agents.department_knowledge_base.document_loader import document_progress
+
+    with document_progress(lambda _stage, message: events.append(message)):
+        AdaptiveDocumentLoader(FakeOCR())(image, source_root=tmp_path)
+
+    assert events == ["正在 OCR 图片：scan.png。", "OCR 已完成：scan.png。"]
 
 
 def test_api_requires_scope_and_supports_extra_files_and_dry_run(
@@ -304,6 +362,80 @@ def test_api_stream_uses_reasoning_for_progress(tmp_path: Path, monkeypatch) -> 
     assert response.status_code == 200
     assert "reasoning_content" in response.text
     assert "data: [DONE]" in response.text
+
+
+def test_api_stream_emits_heartbeat_during_long_step(monkeypatch) -> None:
+    class SlowAgent:
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(stream_heartbeat_seconds=0.01)
+        )
+
+        def invoke(self, *, progress, **kwargs):
+            progress(ProgressEvent("ocr", "正在 OCR：scan.pdf，第 1/2 页。"))
+            time.sleep(0.035)
+            return AgentResult(
+                intent=Intent.SAVE,
+                content="保存完成",
+                knowledge_id="procurement-implementation",
+                department="采购实施部",
+            )
+
+    monkeypatch.setattr(api, "agent", SlowAgent())
+    response = TestClient(api.app).post(
+        "/v1/chat/completions",
+        json={
+            "model": api.MODEL_ID,
+            "knowledge_id": "procurement-implementation",
+            "messages": [{"role": "user", "content": "请保存"}],
+            "stream": True,
+            "thinking": True,
+        },
+    )
+
+    assert "正在 OCR：scan.pdf，第 1/2 页。" in response.text
+    assert "仍在处理，当前阶段：ocr。" in response.text
+    assert "保存完成" in response.text
+
+
+def test_api_stream_reports_uncommitted_failure(monkeypatch) -> None:
+    class FailingAgent:
+        runtime = SimpleNamespace(
+            settings=SimpleNamespace(stream_heartbeat_seconds=0.01)
+        )
+
+        def invoke(self, *, progress, **kwargs):
+            progress(ProgressEvent("embed", "正在生成向量。"))
+            raise RuntimeError("internal details")
+
+    monkeypatch.setattr(api, "agent", FailingAgent())
+    response = TestClient(api.app).post(
+        "/v1/chat/completions",
+        json={
+            "model": api.MODEL_ID,
+            "knowledge_id": "procurement-implementation",
+            "messages": [{"role": "user", "content": "请保存"}],
+            "stream": True,
+            "thinking": True,
+        },
+    )
+
+    assert "本次处理失败，索引未提交。" in response.text
+    assert "此前已发布的知识库快照保持不变" in response.text
+    assert "internal details" not in response.text
+    assert "data: [DONE]" in response.text
+
+
+def test_traceback_redaction_removes_signed_query() -> None:
+    value = (
+        "failed https://minio.example/file.pdf?"
+        "X-Amz-Signature=secret&X-Amz-Credential=value"
+    )
+
+    redacted = api._redact_traceback(value)
+
+    assert "secret" not in redacted
+    assert "Credential" not in redacted
+    assert redacted.endswith("?[REDACTED]")
 
 
 def test_signed_attachment_url_is_not_sent_as_intent_text() -> None:

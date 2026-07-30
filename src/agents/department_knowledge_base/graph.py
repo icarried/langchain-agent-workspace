@@ -12,16 +12,26 @@ from src.knowledge_base.settings import KnowledgeBaseSettings
 
 from .constants import MODEL_ID
 from .departments import Department, get_department
-from .document_loader import AdaptiveDocumentLoader, SUPPORTED_EXTENSIONS
+from .document_loader import (
+    AdaptiveDocumentLoader,
+    SUPPORTED_EXTENSIONS,
+    document_progress,
+)
 from .intent import (
     IntentRecognizer,
     QwenIntentRecognizer,
     recognize_intent_dry_run,
 )
 from .object_store import DepartmentObjectStore, MinioDepartmentObjectStore
-from .schemas import AgentResult, Intent, IntentDecision
+from .schemas import (
+    AgentResult,
+    Intent,
+    IntentDecision,
+    ProgressCallback,
+    ProgressEvent,
+)
 from .settings import DepartmentKnowledgeBaseSettings
-from .storage import persist_documents, prepare_sources
+from .storage import describe_documents, prepare_sources
 
 
 class DepartmentKnowledgeBaseState(TypedDict, total=False):
@@ -33,6 +43,7 @@ class DepartmentKnowledgeBaseState(TypedDict, total=False):
     department: Department
     decision: IntentDecision
     result: AgentResult
+    progress: ProgressCallback | None
 
 
 class DepartmentKnowledgeBaseRuntime:
@@ -88,6 +99,8 @@ class DepartmentKnowledgeBaseRuntime:
         self,
         department: Department,
         sources: list[str | AttachmentReference],
+        *,
+        progress: ProgressCallback | None = None,
     ) -> AgentResult:
         if not sources:
             return self.result(
@@ -95,14 +108,45 @@ class DepartmentKnowledgeBaseRuntime:
                 Intent.SAVE,
                 "已识别为保存意图，但没有收到附件。请上传文件并明确说明“保存到知识库”。",
             )
-        prepared = prepare_sources(sources, self.settings)
-        with self._locks[department.knowledge_id]:
-            object_store = self.object_store
-            locations = (
-                object_store.archive(department, prepared) if object_store else []
+        prepared = prepare_sources(sources, self.settings, progress=progress)
+        if progress:
+            progress(
+                ProgressEvent(
+                    "wait_for_lock",
+                    f"正在等待知识空间 {department.knowledge_id} 的写入锁。",
+                )
             )
-            saved = persist_documents(
-                self.manager.documents_dir(department.knowledge_id),
+        with self._locks[department.knowledge_id]:
+            if progress:
+                progress(
+                    ProgressEvent(
+                        "write_lock",
+                        f"已获得知识空间 {department.knowledge_id} 的写入锁。",
+                    )
+                )
+            object_store = self.object_store
+            locations = []
+            if object_store:
+                for index, document in enumerate(prepared, start=1):
+                    if progress:
+                        progress(
+                            ProgressEvent(
+                                "archive",
+                                f"正在归档第 {index}/{len(prepared)} 个原件："
+                                f"{document.filename}",
+                            )
+                        )
+                    locations.extend(object_store.archive(department, [document]))
+                    if progress:
+                        progress(
+                            ProgressEvent(
+                                "archive",
+                                f"第 {index}/{len(prepared)} 个原件已归档："
+                                f"{document.filename}",
+                            )
+                        )
+            saved = describe_documents(
+                self.manager.active_documents_dir(department.knowledge_id),
                 prepared,
             )
             if locations:
@@ -115,7 +159,33 @@ class DepartmentKnowledgeBaseRuntime:
                     )
                     for item, location in zip(saved, locations, strict=True)
                 ]
-            ingestion = self.manager.ingest(department.knowledge_id)
+            with document_progress(
+                (
+                    lambda stage, message: progress(ProgressEvent(stage, message))
+                    if progress
+                    else None
+                )
+            ):
+                ingestion = self.manager.publish_document_updates(
+                    department.knowledge_id,
+                    {item.filename: item.data for item in prepared},
+                    progress=(
+                        lambda stage, message: progress(ProgressEvent(stage, message))
+                        if progress
+                        else None
+                    ),
+                )
+            if progress:
+                progress(
+                    ProgressEvent(
+                        "commit",
+                        (
+                            "文档内容未变化，当前索引保持不变。"
+                            if ingestion.unchanged
+                            else "新文档快照、manifest 和 Chroma 索引已原子发布。"
+                        ),
+                    )
+                )
         lines = [
             f"- {item.filename}（{item.size_bytes} bytes"
             f"{'，内容已存在' if item.unchanged else ''}）"
@@ -166,7 +236,7 @@ class DepartmentKnowledgeBaseRuntime:
         return self.result(department, Intent.QUERY, content)
 
     def list_documents(self, department: Department) -> AgentResult:
-        directory = self.manager.documents_dir(department.knowledge_id)
+        directory = self.manager.active_documents_dir(department.knowledge_id)
         files = sorted(
             path
             for path in directory.rglob("*")
@@ -238,24 +308,43 @@ def build_graph(runtime: DepartmentKnowledgeBaseRuntime):
     def validate_scope(
         state: DepartmentKnowledgeBaseState,
     ) -> dict[str, Any]:
-        return {"department": get_department(state["knowledge_id"])}
+        department = get_department(state["knowledge_id"])
+        if progress := state.get("progress"):
+            progress(
+                ProgressEvent(
+                    "scope",
+                    f"已锁定知识空间 {department.knowledge_id}。",
+                )
+            )
+        return {"department": department}
 
     def recognize_intent(
         state: DepartmentKnowledgeBaseState,
     ) -> dict[str, Any]:
+        if progress := state.get("progress"):
+            progress(ProgressEvent("intent", "正在识别请求意图。"))
         if state.get("dry_run"):
-            return {
+            result = {
                 "decision": recognize_intent_dry_run(
                     state.get("text", ""),
                     file_count=len(state.get("sources", [])),
                 )
             }
-        return {
-            "decision": runtime.intent_recognizer.recognize(
-                state.get("text", ""),
-                file_count=len(state.get("sources", [])),
+        else:
+            result = {
+                "decision": runtime.intent_recognizer.recognize(
+                    state.get("text", ""),
+                    file_count=len(state.get("sources", [])),
+                )
+            }
+        if progress := state.get("progress"):
+            progress(
+                ProgressEvent(
+                    "intent",
+                    f"已识别意图：{result['decision'].intent.value}。",
+                )
             )
-        }
+        return result
 
     def route(state: DepartmentKnowledgeBaseState) -> str:
         intent = state["decision"].intent
@@ -282,6 +371,7 @@ def build_graph(runtime: DepartmentKnowledgeBaseRuntime):
             "result": runtime.save(
                 state["department"],
                 state.get("sources", []),
+                progress=state.get("progress"),
             )
         }
 

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import queue
 import re
+import threading
 import time
+import traceback
 import uuid
 from collections.abc import Generator
 from typing import Any, Literal
@@ -29,7 +33,7 @@ from src.knowledge_base.manager import RebuildRequiredError
 from .constants import MODEL_ID
 from .departments import DEPARTMENTS
 from .intent import IntentRecognitionError
-from .schemas import AgentResult
+from .schemas import AgentResult, ProgressEvent
 from .service import DepartmentKnowledgeBaseAgent
 
 
@@ -37,6 +41,7 @@ READINESS_TEXT = (
     "department-knowledge-base-agent 已就绪。业务请求必须由平台传入固定 "
     "knowledge_id；可直接提问，或上传附件并明确说明“保存到知识库”。"
 )
+LOGGER = logging.getLogger(__name__)
 
 
 class ChatMessage(OpenAIChatMessage):
@@ -120,12 +125,16 @@ def create_chat_completion(request: ChatCompletionRequest) -> Any:
             dry_run=request.dry_run,
         )
     except ValueError as exc:
+        _log_request_failure(request.knowledge_id, "invoke", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RebuildRequiredError as exc:
+        _log_request_failure(request.knowledge_id, "invoke", exc)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (IntentRecognitionError, OCRRequestError) as exc:
+        _log_request_failure(request.knowledge_id, "invoke", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
+        _log_request_failure(request.knowledge_id, "invoke", exc)
         raise HTTPException(
             status_code=503,
             detail="department knowledge-base service is temporarily unavailable",
@@ -192,6 +201,7 @@ def _stream_request(
     sources: list[AttachmentReference],
 ) -> Generator[str, None, None]:
     completion_id, created = _stream_identity()
+    request_id = uuid.uuid4().hex
     yield _sse_delta(completion_id, created, request.model, role="assistant")
     channel: Literal["content", "reasoning_content"] = (
         "reasoning_content" if request.thinking else "content"
@@ -200,32 +210,100 @@ def _stream_request(
         completion_id,
         created,
         request.model,
-        content=f"已锁定知识空间 {request.knowledge_id}，正在识别请求意图。\n",
+        content=(
+            f"已接收请求，知识空间为 {request.knowledge_id}，"
+            f"附件数量为 {len(sources)}。\n"
+        ),
         channel=channel,
     )
-    try:
-        result = agent.invoke(
-            knowledge_id=request.knowledge_id or "",
-            text=text,
-            sources=sources,
-            top_k=request.top_k,
-            dry_run=request.dry_run,
-        )
-    except ValueError as exc:
-        content = str(exc)
-    except (IntentRecognitionError, OCRRequestError, RebuildRequiredError) as exc:
-        content = str(exc)
-    except Exception:
-        content = "部门知识库服务暂时不可用。"
-    else:
+    events: queue.Queue[tuple[str, Any]] = queue.Queue()
+    state = {"stage": "accepted"}
+
+    def report(event: ProgressEvent) -> None:
+        state["stage"] = event.stage
+        events.put(("progress", event))
+
+    def run() -> None:
+        try:
+            result = agent.invoke(
+                knowledge_id=request.knowledge_id or "",
+                text=text,
+                sources=sources,
+                top_k=request.top_k,
+                dry_run=request.dry_run,
+                progress=report,
+            )
+        except Exception as exc:
+            LOGGER.error(
+                "department knowledge-base request failed request_id=%s "
+                "knowledge_id=%s stage=%s exception_type=%s\n%s",
+                request_id,
+                request.knowledge_id,
+                state["stage"],
+                type(exc).__name__,
+                _redact_traceback(traceback.format_exc()),
+            )
+            events.put(("error", exc))
+        else:
+            events.put(("result", result))
+
+    threading.Thread(
+        target=run,
+        name=f"department-kb-{request_id[:8]}",
+        daemon=True,
+    ).start()
+
+    while True:
+        try:
+            kind, payload = events.get(
+                timeout=agent.runtime.settings.stream_heartbeat_seconds
+            )
+        except queue.Empty:
+            yield _sse_delta(
+                completion_id,
+                created,
+                request.model,
+                content=f"仍在处理，当前阶段：{state['stage']}。\n",
+                channel=channel,
+            )
+            continue
+        if kind == "progress":
+            yield _sse_delta(
+                completion_id,
+                created,
+                request.model,
+                content=f"{payload.message}\n",
+                channel=channel,
+            )
+            continue
+        if kind == "result":
+            result = payload
+            content = result.content
+            break
+        exc = payload
+        if isinstance(
+            exc,
+            (
+                ValueError,
+                IntentRecognitionError,
+                OCRRequestError,
+                RebuildRequiredError,
+            ),
+        ):
+            content = str(exc)
+        else:
+            content = (
+                "部门知识库服务暂时不可用；本次索引未提交，"
+                "此前已发布的知识库快照保持不变。"
+            )
         yield _sse_delta(
             completion_id,
             created,
             request.model,
-            content=f"已识别意图：{result.intent.value}。\n",
+            content="本次处理失败，索引未提交。\n",
             channel=channel,
         )
-        content = result.content
+        break
     yield _sse_delta(
         completion_id,
         created,
@@ -234,6 +312,26 @@ def _stream_request(
     )
     yield _sse_done(completion_id, created, request.model)
     yield "data: [DONE]\n\n"
+
+
+def _redact_traceback(value: str) -> str:
+    return re.sub(r"(https?://[^\s?]+)\?[^\s]+", r"\1?[REDACTED]", value)
+
+
+def _log_request_failure(
+    knowledge_id: str | None,
+    stage: str,
+    exc: Exception,
+) -> None:
+    LOGGER.error(
+        "department knowledge-base request failed request_id=%s "
+        "knowledge_id=%s stage=%s exception_type=%s\n%s",
+        uuid.uuid4().hex,
+        knowledge_id,
+        stage,
+        type(exc).__name__,
+        _redact_traceback(traceback.format_exc()),
+    )
 
 
 def _stream_text(

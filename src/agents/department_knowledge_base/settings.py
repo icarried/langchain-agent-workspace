@@ -21,6 +21,7 @@ class DepartmentKnowledgeBaseSettings(BaseSettings):
     ocr_max_pages: int = Field(default=100, ge=1, le=1000)
     min_local_text_chars: int = Field(default=20, ge=0, le=10000)
     max_files_per_request: int = Field(default=20, ge=1, le=100)
+    stream_heartbeat_seconds: float = Field(default=10, gt=0, le=60)
     allow_local_files: bool = False
     object_store_enabled: bool = False
     minio_endpoint: str = "department-kb-minio:9000"

@@ -86,6 +86,12 @@ Qwen3.5 把请求分类为：
 同名新文件会替换当前可检索快照，避免新旧制度同时参与回答；MinIO 中的 SHA-256
 内容寻址原件不会被覆盖，因此旧版仍可由管理员审计或恢复。
 
+流式保存会立即报告空间、附件数量和意图，然后逐步报告附件下载校验、知识空间写锁、
+MinIO 原件归档、文档解析、逐页 OCR、向量生成、Chroma 构建和最终提交。长步骤默认
+每 10 秒发送一次心跳，可用 `DEPARTMENT_KB_STREAM_HEARTBEAT_SECONDS` 调整。
+这些内容是执行状态，不是模型隐藏思维链；`thinking=true` 时进入
+`delta.reasoning_content`，否则进入普通 `delta.content`。
+
 ## 数据与对象存储隔离
 
 每个部门同时拥有：
@@ -99,7 +105,24 @@ department-kb-<knowledge_id>
 ```
 
 `ai-app-platform` 的 MinIO 只作为上传入口。worker 下载附件后，先把原件写入本项目
-专属 `department-kb-minio`，对象键为内容哈希路径，再保存本地解析快照并更新 Chroma。
+专属 `department-kb-minio`，对象键为内容哈希路径，再在独立版本目录构建文档快照、
+Chroma 和 manifest。新索引数量校验通过后，才原子替换根 manifest 中的
+`active_version` 指针；构建失败不会修改当前可检索快照。默认保留当前版和上一版索引，
+可用 `KB_VERSION_RETENTION` 调整。失败请求可能已经归档 MinIO 原件，但不得称为
+“已完成索引”。
+
+版本化布局：
+
+```text
+<knowledge_id>/
+├── manifest.json                 # 当前 active_version，原子替换
+├── documents/                    # 通用 CLI 的待入库工作目录/旧布局兼容
+└── versions/<version-id>/
+    ├── documents/
+    ├── chroma/
+    └── manifest.json
+```
+
 专属 MinIO 的 `9000/9001` 只在 Compose 网络中 `expose`，没有宿主机 `ports`，不会与
 现有 `9000/9002` 冲突。不要给部门用户 MinIO 凭证或网关 API key。
 

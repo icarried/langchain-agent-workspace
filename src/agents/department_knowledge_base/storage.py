@@ -13,6 +13,7 @@ from src.agents.remote_files import is_http_url, read_remote_file, remote_filena
 
 from .document_loader import SUPPORTED_EXTENSIONS
 from .schemas import SavedDocument
+from .schemas import ProgressCallback, ProgressEvent
 from .settings import DepartmentKnowledgeBaseSettings
 
 
@@ -26,6 +27,8 @@ class PreparedDocument:
 def prepare_sources(
     sources: list[str | AttachmentReference],
     settings: DepartmentKnowledgeBaseSettings,
+    *,
+    progress: ProgressCallback | None = None,
 ) -> list[PreparedDocument]:
     if len(sources) > settings.max_files_per_request:
         raise ValueError(
@@ -33,13 +36,21 @@ def prepare_sources(
         )
     prepared: list[PreparedDocument] = []
     seen: dict[str, str] = {}
-    for raw_source in sources:
+    for index, raw_source in enumerate(sources, start=1):
         source = (
             raw_source
             if isinstance(raw_source, AttachmentReference)
             else AttachmentReference(url=raw_source, source_kind="legacy")
         )
         location = source.url
+        display_name = source.filename or remote_filename(location)
+        if progress:
+            progress(
+                ProgressEvent(
+                    "download",
+                    f"正在下载并校验第 {index}/{len(sources)} 个附件：{display_name}",
+                )
+            )
         if is_http_url(location):
             data, content_type = read_remote_file(location)
             filename = source.filename or remote_filename(location)
@@ -66,6 +77,13 @@ def prepare_sources(
         prepared.append(
             PreparedDocument(filename=filename, data=data, sha256=digest)
         )
+        if progress:
+            progress(
+                ProgressEvent(
+                    "download",
+                    f"第 {index}/{len(sources)} 个附件下载并校验完成：{filename}",
+                )
+            )
     return prepared
 
 
@@ -91,6 +109,24 @@ def persist_documents(
             )
         )
     return results
+
+
+def describe_documents(
+    documents_dir: Path,
+    documents: list[PreparedDocument],
+) -> list[SavedDocument]:
+    return [
+        SavedDocument(
+            filename=document.filename,
+            sha256=document.sha256,
+            size_bytes=len(document.data),
+            unchanged=(
+                (target := documents_dir / document.filename).exists()
+                and _sha256_file(target) == document.sha256
+            ),
+        )
+        for document in documents
+    ]
 
 
 def _safe_filename(filename: str, content_type: str) -> str:

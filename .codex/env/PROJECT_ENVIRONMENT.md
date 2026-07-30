@@ -166,6 +166,13 @@ Use dated bullets for discoveries that may need another confirmation.
   models are healthy, only gateway publishes `10085:8008`, and both knowledge-base named volumes
   remain present. GPU Stack, department MinIO, platform-to-gateway connectivity and gateway
   dry-run validation passed.
+- 2026-07-30: Remote host `robotpl` was upgraded through WSL `Ubuntu` and the local
+  Git-bundle/server-build workflow to commit
+  `6124ed133f39b19fece8ea0aa0934aa03de986ad`, release `git-6124ed133f39`, image
+  `agent-workspace:git-6124ed133f39`. All 12 Compose services run, all ten agent
+  models are healthy, only gateway publishes `10085:8008`, and both knowledge-base
+  named volumes remain present. GPU Stack, department MinIO, platform-to-gateway
+  connectivity and gateway dry-run validation passed.
 - 2026-07-30: Local `ai-app-platform` app 6 “项目交付部知识库” uses model config 7 with
   `attachment.mode=file_url_content_part` and `knowledge_id=project-delivery`. A real upload
   through Windows `127.0.0.1:10081` preserved the Chinese original filename through platform PG,
