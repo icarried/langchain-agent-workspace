@@ -17,6 +17,7 @@ INTENT_SYSTEM_PROMPT = """你是企业知识库请求路由器，只输出 JSON�
 - save：用户明确要求保存、归档、上传入库、更新知识库中的附件。
 - query：用户询问应当依据当前部门知识库回答的问题。
 - list：用户要求查看当前部门已保存的文档或知识库状态。
+- import_status：用户要求查看导入进度、最近导入任务或指定任务编号。
 - help：用户询问使用方式、支持能力或没有提出业务动作。
 - unknown：意图不清楚。
 
@@ -118,6 +119,11 @@ def recognize_intent_dry_run(text: str, *, file_count: int) -> IntentDecision:
         for keyword in ("保存", "入库", "归档", "上传", "更新资料", "store", "save")
     ):
         intent = Intent.SAVE
+    elif any(
+        keyword in normalized
+        for keyword in ("导入进度", "任务进度", "查看任务", "import status")
+    ):
+        intent = Intent.IMPORT_STATUS
     elif any(keyword in normalized for keyword in ("文档列表", "查看文档", "知识库状态", "list")):
         intent = Intent.LIST
     elif not normalized or any(keyword in normalized for keyword in ("帮助", "怎么用", "help")):

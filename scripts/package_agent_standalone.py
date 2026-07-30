@@ -18,6 +18,10 @@ AGENTS_ROOT = WORKSPACE_ROOT / "src" / "agents"
 EXTERNAL_IMPORT_PATTERN = re.compile(
     r"^\s*(?:from|import)\s+src(?:\.|\s|$)", re.MULTILINE
 )
+EXTERNAL_MODULE_PATTERN = re.compile(
+    r"^\s*(?:from|import)\s+(src(?:\.[A-Za-z0-9_]+)+)",
+    re.MULTILINE,
+)
 
 
 def _load_manifest(agent_dir: Path) -> dict[str, Any]:
@@ -36,11 +40,11 @@ def _validate_agent(agent_dir: Path, manifest: dict[str, Any]) -> None:
         source = source_path.read_text(encoding="utf-8")
         if not EXTERNAL_IMPORT_PATTERN.search(source):
             continue
-        imported_modules = re.findall(r"src\.agents\.([A-Za-z0-9_]+)", source)
+        imported_modules = EXTERNAL_MODULE_PATTERN.findall(source)
         missing = [
             module
             for module in imported_modules
-            if f"src/agents/{module}.py" not in vendored_sources
+            if f"{module.replace('.', '/')}.py" not in vendored_sources
         ]
         if missing or not imported_modules:
             violations.append(str(source_path.relative_to(agent_dir)))

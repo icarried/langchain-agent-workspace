@@ -24,11 +24,19 @@ def test_workspace_python_imports_are_declared_for_vendoring() -> None:
     imported_modules = set()
     for source_path in AGENT_DIR.rglob("*.py"):
         source = source_path.read_text(encoding="utf-8")
-        imported_modules.update(re.findall(r"src\.agents\.([A-Za-z0-9_]+)", source))
+        imported_modules.update(
+            re.findall(
+                r"^\s*(?:from|import)\s+(src(?:\.[A-Za-z0-9_]+)+)",
+                source,
+                flags=re.MULTILINE,
+            )
+        )
     manifest = json.loads((AGENT_DIR / "standalone_manifest.json").read_text("utf-8"))
     vendored_sources = set(manifest["workspace_files"])
     assert imported_modules
-    assert {f"src/agents/{name}.py" for name in imported_modules} <= vendored_sources
+    assert {
+        f"{module.replace('.', '/')}.py" for module in imported_modules
+    } <= vendored_sources
 
 
 def test_university_references_are_embedded() -> None:
@@ -54,6 +62,7 @@ def test_build_bundle_contains_runtime_and_distribution_files(tmp_path: Path) ->
         assert f"{root}/src/batch_resume_review_llm/graph.py" in names
         assert f"{root}/src/src/agents/openai_compatible.py" in names
         assert f"{root}/src/src/agents/openai_compatible_inputs.py" in names
+        assert f"{root}/src/src/document_conversion.py" in names
         assert any(
             name.startswith(f"{root}/src/batch_resume_review_llm/references/universities/")
             and name.endswith(".md")

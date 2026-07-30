@@ -2,12 +2,17 @@ from pathlib import Path
 
 import pytest
 
+from src.knowledge_base import manager as manager_module
 from src.knowledge_base.manager import KnowledgeBaseManager, RebuildRequiredError
 from src.knowledge_base.settings import KnowledgeBaseSettings
 
 
 class FakeEmbeddings:
+    def __init__(self) -> None:
+        self.document_batches: list[list[str]] = []
+
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.document_batches.append(list(texts))
         return [self.embed_query(text) for text in texts]
 
     def embed_query(self, text: str) -> list[float]:
@@ -142,3 +147,117 @@ def test_successful_update_publishes_complete_document_snapshot(tmp_path: Path):
     assert (active_documents / "guide.txt").exists()
     assert (active_documents / "new.txt").read_bytes() == b"new vector policy"
     assert "versions" in active_documents.parts
+
+
+def test_update_reuses_unchanged_index_and_only_embeds_changed_document(
+    tmp_path: Path,
+):
+    manager = _manager(tmp_path)
+    embeddings = manager._embeddings
+    (manager.documents_dir("default") / "guide.txt").write_text(
+        "existing policy",
+        encoding="utf-8",
+    )
+    manager.ingest("default")
+    embeddings.document_batches.clear()
+    progress: list[tuple[str, str]] = []
+
+    result = manager.publish_document_updates(
+        "default",
+        {"new.txt": b"new vector policy"},
+        progress=lambda stage, message: progress.append((stage, message)),
+    )
+
+    assert result.documents_seen == 2
+    assert result.documents_loaded == 1
+    assert embeddings.document_batches == [["new vector policy"]]
+    assert any(stage == "reuse_index" for stage, _message in progress)
+    assert not any("第 1/2 个文档" in message for _stage, message in progress)
+    assert manager.active_manifest("default")["chunk_count"] == 2
+
+
+def test_replacing_document_removes_its_previous_chunks(tmp_path: Path):
+    manager = _manager(tmp_path)
+    (manager.documents_dir("default") / "guide.txt").write_text(
+        "old policy",
+        encoding="utf-8",
+    )
+    manager.ingest("default")
+
+    manager.publish_document_updates(
+        "default",
+        {"guide.txt": b"new vector policy"},
+    )
+
+    active = manager.active_manifest("default")
+    assert active["chunk_count"] == 1
+    retrieval = manager.retrieve("default", "vector policy", top_k=5)
+    assert [citation.text for citation in retrieval.citations] == [
+        "new vector policy"
+    ]
+
+
+def test_retrieve_many_uses_rrf_deduplicates_chunks_and_limits_documents(
+    tmp_path: Path,
+    monkeypatch,
+):
+    manager = _manager(tmp_path)
+    base = tmp_path / "agent-a" / "default"
+    base.mkdir(parents=True)
+    (base / "manifest.json").write_text("{}", encoding="utf-8")
+
+    rows = [
+        [
+            {
+                "id": "shared",
+                "document": "共同证据",
+                "metadata": {"source": "制度A.pdf", "chunk_index": 0},
+                "score": 0.8,
+            },
+            {
+                "id": "only-a",
+                "document": "证据A",
+                "metadata": {"source": "制度B.pdf", "chunk_index": 0},
+                "score": 0.9,
+            },
+        ],
+        [
+            {
+                "id": "shared",
+                "document": "共同证据",
+                "metadata": {"source": "制度A.pdf", "chunk_index": 0},
+                "score": 0.95,
+            },
+            {
+                "id": "only-b",
+                "document": "证据B",
+                "metadata": {"source": "制度C.pdf", "chunk_index": 0},
+                "score": 0.85,
+            },
+        ],
+    ]
+
+    class FakeBackend:
+        def __init__(self, _path):
+            pass
+
+        def query_many(self, vectors, top_k):
+            assert len(vectors) == 2
+            assert top_k == 5
+            return rows
+
+    monkeypatch.setattr(manager_module, "_ChromaBackend", FakeBackend)
+
+    result = manager.retrieve_many(
+        "default",
+        ["采购验收", "采购 验收"],
+        top_k=5,
+        max_chunks=3,
+        max_documents=2,
+        rrf_k=60,
+    )
+
+    assert result.queries == ["采购验收", "采购 验收"]
+    assert [item.chunk_id for item in result.citations] == ["shared", "only-a"]
+    assert result.citations[0].score == 0.95
+    assert len({item.source for item in result.citations}) == 2

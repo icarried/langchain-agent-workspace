@@ -205,8 +205,16 @@ def dedupe_attachment_references(
             result.append(value)
             continue
         existing = result[position]
-        if not existing.filename and value.filename:
-            result[position] = value
+        if (
+            (not existing.filename and value.filename)
+            or (not existing.media_type and value.media_type)
+        ):
+            result[position] = AttachmentReference(
+                url=existing.url,
+                filename=value.filename or existing.filename,
+                media_type=value.media_type or existing.media_type,
+                source_kind=value.source_kind,
+            )
     return result
 
 

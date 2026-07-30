@@ -22,6 +22,8 @@ class PreparedDocument:
     filename: str
     data: bytes
     sha256: str
+    mime_type: str = ""
+    source_kind: str = "unknown"
 
 
 def prepare_sources(
@@ -36,6 +38,7 @@ def prepare_sources(
         )
     prepared: list[PreparedDocument] = []
     seen: dict[str, str] = {}
+    total_bytes = 0
     for index, raw_source in enumerate(sources, start=1):
         source = (
             raw_source
@@ -52,7 +55,10 @@ def prepare_sources(
                 )
             )
         if is_http_url(location):
-            data, content_type = read_remote_file(location)
+            data, content_type = read_remote_file(
+                location,
+                max_bytes=settings.max_file_bytes,
+            )
             filename = source.filename or remote_filename(location)
         else:
             if not settings.allow_local_files:
@@ -60,10 +66,23 @@ def prepare_sources(
             path = Path(location).resolve()
             if not path.is_file():
                 raise ValueError(f"local attachment does not exist: {path.name}")
+            if path.stat().st_size > settings.max_file_bytes:
+                raise ValueError(
+                    f"attachment exceeds {settings.max_file_bytes} bytes: {path.name}"
+                )
             data = path.read_bytes()
             content_type = mimetypes.guess_type(path.name)[0] or ""
             filename = path.name
         filename = _safe_filename(filename, content_type)
+        if len(data) > settings.max_file_bytes:
+            raise ValueError(
+                f"attachment exceeds {settings.max_file_bytes} bytes: {filename}"
+            )
+        total_bytes += len(data)
+        if total_bytes > settings.max_batch_bytes:
+            raise ValueError(
+                f"attachments exceed {settings.max_batch_bytes} total bytes"
+            )
         digest = hashlib.sha256(data).hexdigest()
         previous = seen.get(filename.casefold())
         if previous == digest:
@@ -75,7 +94,13 @@ def prepare_sources(
             )
         seen[filename.casefold()] = digest
         prepared.append(
-            PreparedDocument(filename=filename, data=data, sha256=digest)
+            PreparedDocument(
+                filename=filename,
+                data=data,
+                sha256=digest,
+                mime_type=source.media_type or content_type or "",
+                source_kind=source.source_kind,
+            )
         )
         if progress:
             progress(

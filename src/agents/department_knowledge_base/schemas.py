@@ -11,6 +11,7 @@ class Intent(StrEnum):
     SAVE = "save"
     QUERY = "query"
     LIST = "list"
+    IMPORT_STATUS = "import_status"
     HELP = "help"
     UNKNOWN = "unknown"
 
@@ -38,9 +39,17 @@ class SavedDocument(BaseModel):
     object_key: str | None = None
 
 
+class SourceDocument(BaseModel):
+    filename: str
+    sha256: str | None = None
+
+
 class AgentResult(BaseModel):
     intent: Intent
     content: str
     knowledge_id: str
     department: str
     saved_documents: list[SavedDocument] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    task_id: str | None = None
+    task_status: str | None = None

@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import shutil
+import unicodedata
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,7 +18,14 @@ from .loaders import (
     iter_supported_paths,
     load_document,
 )
-from .schemas import Citation, IngestResult, KnowledgeAnswer, KnowledgeBaseInfo, RetrievalResult
+from .schemas import (
+    Citation,
+    IngestResult,
+    KnowledgeAnswer,
+    KnowledgeBaseInfo,
+    MultiQueryRetrievalResult,
+    RetrievalResult,
+)
 from .settings import KnowledgeBaseSettings
 
 
@@ -93,6 +101,8 @@ class KnowledgeBaseManager:
         knowledge_base: str,
         documents: Mapping[str, bytes],
         *,
+        catalog_updates: Mapping[str, Mapping[str, Any]] | None = None,
+        prepared_records: Mapping[str, DocumentRecord] | None = None,
         rebuild: bool = False,
         progress: ProgressCallback | None = None,
     ) -> IngestResult:
@@ -122,6 +132,9 @@ class KnowledgeBaseManager:
                 rebuild=rebuild,
                 progress=progress,
                 prepared_stage=stage,
+                catalog_updates=catalog_updates,
+                prepared_records=prepared_records,
+                updated_documents=set(documents),
             )
         except Exception:
             shutil.rmtree(stage, ignore_errors=True)
@@ -135,6 +148,9 @@ class KnowledgeBaseManager:
         rebuild: bool,
         progress: ProgressCallback | None = None,
         prepared_stage: Path | None = None,
+        catalog_updates: Mapping[str, Mapping[str, Any]] | None = None,
+        prepared_records: Mapping[str, DocumentRecord] | None = None,
+        updated_documents: set[str] | None = None,
     ) -> IngestResult:
         base = self._base_path(name)
         base.mkdir(parents=True, exist_ok=True)
@@ -160,11 +176,20 @@ class KnowledgeBaseManager:
             )
         }
         existing = _read_json(base / "manifest.json")
+        catalog = _merge_document_catalog(
+            existing.get("document_catalog"),
+            fingerprints,
+            catalog_updates,
+        )
         signature = self._embedding_signature()
         if existing and existing.get("embedding_signature") != signature and not rebuild:
             shutil.rmtree(stage, ignore_errors=True)
             raise RebuildRequiredError("embedding configuration changed; ingest again with rebuild=true")
-        if existing.get("documents") == fingerprints and not rebuild:
+        if (
+            existing.get("documents") == fingerprints
+            and existing.get("document_catalog", {}) == catalog
+            and not rebuild
+        ):
             shutil.rmtree(stage, ignore_errors=True)
             return IngestResult(
                 knowledge_base=name,
@@ -174,11 +199,45 @@ class KnowledgeBaseManager:
                 unchanged=True,
             )
 
+        incremental = bool(
+            existing
+            and not rebuild
+            and updated_documents is not None
+            and existing.get("embedding_signature") == signature
+            and self._paths(name)["chroma"].exists()
+        )
+        changed_documents = {
+            filename
+            for filename in (updated_documents or set())
+            if existing.get("documents", {}).get(filename)
+            != fingerprints.get(filename)
+        }
+        if incremental:
+            shutil.copytree(self._paths(name)["chroma"], paths["chroma"])
+            if progress:
+                progress(
+                    "reuse_index",
+                    (
+                        "已复用当前索引；"
+                        f"本次仅更新 {len(changed_documents)} 个变更文档。"
+                    ),
+                )
+
         loaded_documents = []
         committed = False
-        document_paths = iter_supported_paths(
+        all_document_paths = iter_supported_paths(
             paths["documents"],
             supported_extensions=self._supported_extensions,
+        )
+        document_paths = (
+            [
+                path
+                for path in all_document_paths
+                if path.relative_to(paths["documents"]).as_posix()
+                in changed_documents
+            ]
+            if incremental
+            else all_document_paths
         )
         try:
             for index, path in enumerate(document_paths, start=1):
@@ -187,9 +246,14 @@ class KnowledgeBaseManager:
                         "parse_document",
                         f"正在解析第 {index}/{len(document_paths)} 个文档：{path.name}",
                     )
-                document = self._document_loader(
-                    path,
-                    source_root=paths["documents"],
+                relative_name = path.relative_to(paths["documents"]).as_posix()
+                document = (
+                    prepared_records.get(relative_name)
+                    if prepared_records and relative_name in prepared_records
+                    else self._document_loader(
+                        path,
+                        source_root=paths["documents"],
+                    )
                 )
                 if document is not None:
                     loaded_documents.append(document)
@@ -200,19 +264,30 @@ class KnowledgeBaseManager:
                     )
             chunks = chunk_documents(loaded_documents)
             if progress:
-                progress("embed", f"正在生成 {len(chunks)} 个检索分块的向量。")
-            embeddings = self._get_embeddings()
+                progress(
+                    "embed",
+                    f"正在生成 {len(chunks)} 个新增或变更检索分块的向量。",
+                )
             vectors = (
-                embeddings.embed_documents([chunk.page_content for chunk in chunks])
+                self._get_embeddings().embed_documents(
+                    [chunk.page_content for chunk in chunks]
+                )
                 if chunks
                 else []
             )
             if progress:
                 progress("build_index", "正在构建并验证新的 Chroma 索引。")
             backend = _ChromaBackend(paths["chroma"])
+            previous_count = backend.count() if incremental else 0
+            deleted_count = (
+                backend.delete_sources(changed_documents)
+                if incremental and changed_documents
+                else 0
+            )
             if chunks:
                 backend.upsert(chunks, vectors)
-            if backend.count() != len(chunks):
+            expected_count = previous_count - deleted_count + len(chunks)
+            if backend.count() != expected_count:
                 raise RuntimeError("new Chroma index verification failed")
             version = stage.name
             manifest = {
@@ -220,9 +295,11 @@ class KnowledgeBaseManager:
                 "knowledge_base": name,
                 "active_version": version,
                 "documents": fingerprints,
+                "document_catalog": catalog,
                 "ingested_at": datetime.now(UTC).isoformat(),
                 "embedding_model": self.settings.embedding_model,
                 "embedding_signature": signature,
+                "chunk_count": expected_count,
             }
             _write_json(paths["manifest"], manifest)
             try:
@@ -271,23 +348,113 @@ class KnowledgeBaseManager:
         ]
         return RetrievalResult(query=query, citations=citations, refused=not citations)
 
+    def retrieve_many(
+        self,
+        knowledge_base: str,
+        queries: list[str],
+        *,
+        top_k: int | None = None,
+        max_chunks: int = 20,
+        max_documents: int = 10,
+        rrf_k: int = 60,
+    ) -> MultiQueryRetrievalResult:
+        name = validate_slug(knowledge_base, "knowledge base")
+        paths = self._paths(name)
+        if not paths["manifest"].exists():
+            raise FileNotFoundError(f"knowledge base is not ingested: {name}")
+        unique_queries = _dedupe_queries(queries)
+        if not unique_queries:
+            return MultiQueryRetrievalResult(refused=True)
+        vectors = self._get_embeddings().embed_documents(unique_queries)
+        rows_by_query = _ChromaBackend(paths["chroma"]).query_many(
+            vectors,
+            top_k or self.settings.top_k,
+        )
+        fused: dict[str, dict[str, Any]] = {}
+        for rows in rows_by_query:
+            for rank, row in enumerate(rows, start=1):
+                score = row["score"]
+                if score < self.settings.min_relevance_score:
+                    continue
+                entry = fused.setdefault(
+                    row["id"],
+                    {
+                        "row": row,
+                        "fusion_score": 0.0,
+                        "best_score": score,
+                    },
+                )
+                entry["fusion_score"] += 1.0 / (rrf_k + rank)
+                if score > entry["best_score"]:
+                    entry["best_score"] = score
+                    entry["row"] = row
+        ordered = sorted(
+            fused.values(),
+            key=lambda item: (
+                -item["fusion_score"],
+                -item["best_score"],
+                item["row"]["id"],
+            ),
+        )
+        citations: list[Citation] = []
+        documents: set[str] = set()
+        for entry in ordered:
+            row = entry["row"]
+            source = str(row["metadata"].get("source", ""))
+            document_key = _document_key(source)
+            if document_key not in documents and len(documents) >= max_documents:
+                continue
+            documents.add(document_key)
+            citations.append(
+                Citation(
+                    source=source,
+                    chunk_id=row["id"],
+                    chunk_index=int(row["metadata"].get("chunk_index", 0)),
+                    text=row["document"][:1000],
+                    score=float(entry["best_score"]),
+                )
+            )
+            if len(citations) >= max_chunks:
+                break
+        return MultiQueryRetrievalResult(
+            queries=unique_queries,
+            citations=citations,
+            refused=not citations,
+        )
+
     def answer(self, knowledge_base: str, query: str, *, top_k: int | None = None) -> KnowledgeAnswer:
         retrieval = self.retrieve(knowledge_base, query, top_k=top_k)
-        if not retrieval.citations:
+        return self.answer_from_citations(query, retrieval.citations)
+
+    def answer_from_citations(
+        self,
+        query: str,
+        citations: list[Citation],
+    ) -> KnowledgeAnswer:
+        if not citations:
             return KnowledgeAnswer(answer=REFUSAL_MESSAGE, refused=True)
         context = "\n\n".join(
-            f"[{item.source}#chunk-{item.chunk_index}]\n{item.text}" for item in retrieval.citations
+            f"<evidence source={json.dumps(item.source, ensure_ascii=False)}>\n"
+            f"{item.text}\n</evidence>"
+            for item in citations
         )
         prompt = (
-            "请只根据下列知识库证据回答问题；证据不足时明确拒答。"
-            "回答后不要编造来源。\n\n"
-            f"问题：{query}\n\n证据：\n{context}"
+            "你是企业部门知识库问答助手。请只根据 <context> 中的知识库证据回答用户问题。\n"
+            "规则：\n"
+            "1. 证据不足时明确说明知识库中没有足够依据；不使用外部常识补全，不编造条款、"
+            "数字、文档名或来源。\n"
+            "2. 多份证据一致时整合表达；存在冲突时指出冲突及对应文档，不擅自判断真伪。\n"
+            "3. 用户问题含多个部分时逐项回答；无法回答的部分单独说明。\n"
+            "4. 不要提及“上下文”“向量”“chunk”“检索分块”等内部实现。\n"
+            "5. 不要在正文自行生成“来源”段；来源由服务端根据实际证据统一附加。\n"
+            "6. 使用与用户问题相同的语言，表达清晰、直接。\n\n"
+            f"<context>\n{context}\n</context>\n\n用户问题：\n{query}"
         )
         response = self._get_chat_model().invoke(prompt)
         content = getattr(response, "content", response)
         if not isinstance(content, str):
             content = str(content)
-        return KnowledgeAnswer(answer=content.strip(), citations=retrieval.citations)
+        return KnowledgeAnswer(answer=content.strip(), citations=citations)
 
     def documents_dir(self, knowledge_base: str) -> Path:
         name = validate_slug(knowledge_base, "knowledge base")
@@ -298,6 +465,18 @@ class KnowledgeBaseManager:
     def active_documents_dir(self, knowledge_base: str) -> Path:
         name = validate_slug(knowledge_base, "knowledge base")
         return self._paths(name)["documents"]
+
+    def active_manifest(self, knowledge_base: str) -> dict[str, Any]:
+        name = validate_slug(knowledge_base, "knowledge base")
+        return _read_json(self._base_path(name) / "manifest.json")
+
+    def load_document_record(
+        self,
+        path: Path,
+        *,
+        source_root: Path,
+    ) -> DocumentRecord | None:
+        return self._document_loader(path, source_root=source_root)
 
     def _base_path(self, name: str) -> Path:
         return self.root / name
@@ -434,21 +613,59 @@ class _ChromaBackend:
             raise
         return collection.count()
 
+    def delete_sources(self, sources: set[str]) -> int:
+        if not sources:
+            return 0
+        try:
+            collection = self.client.get_collection(self.collection_name)
+        except Exception as exc:
+            if "does not exist" in str(exc).lower() or "not found" in str(exc).lower():
+                return 0
+            raise
+        ids: list[str] = []
+        for source in sorted(sources):
+            result = collection.get(where={"source": source})
+            ids.extend(str(item) for item in (result.get("ids") or []))
+        unique_ids = list(dict.fromkeys(ids))
+        for start in range(0, len(unique_ids), 500):
+            collection.delete(ids=unique_ids[start : start + 500])
+        return len(unique_ids)
+
     def query(self, vector: list[float], top_k: int) -> list[dict[str, Any]]:
+        return self.query_many([vector], top_k)[0]
+
+    def query_many(
+        self,
+        vectors: list[list[float]],
+        top_k: int,
+    ) -> list[list[dict[str, Any]]]:
         collection = self.client.get_or_create_collection(self.collection_name)
-        result = collection.query(query_embeddings=[vector], n_results=top_k)
-        ids = (result.get("ids") or [[]])[0]
-        documents = (result.get("documents") or [[]])[0]
-        metadatas = (result.get("metadatas") or [[]])[0]
-        distances = (result.get("distances") or [[]])[0]
+        result = collection.query(query_embeddings=vectors, n_results=top_k)
+        all_ids = result.get("ids") or [[] for _ in vectors]
+        all_documents = result.get("documents") or [[] for _ in vectors]
+        all_metadatas = result.get("metadatas") or [[] for _ in vectors]
+        all_distances = result.get("distances") or [[] for _ in vectors]
         return [
-            {
-                "id": chunk_id,
-                "document": document,
-                "metadata": metadata or {},
-                "score": max(0.0, min(1.0, 1.0 - float(distance))),
-            }
-            for chunk_id, document, metadata, distance in zip(ids, documents, metadatas, distances)
+            [
+                {
+                    "id": chunk_id,
+                    "document": document,
+                    "metadata": metadata or {},
+                    "score": max(0.0, min(1.0, 1.0 - float(distance))),
+                }
+                for chunk_id, document, metadata, distance in zip(
+                    ids,
+                    documents,
+                    metadatas,
+                    distances,
+                )
+            ]
+            for ids, documents, metadatas, distances in zip(
+                all_ids,
+                all_documents,
+                all_metadatas,
+                all_distances,
+            )
         ]
 
 
@@ -456,6 +673,50 @@ def validate_slug(value: str, label: str) -> str:
     if not SLUG_PATTERN.fullmatch(value):
         raise ValueError(f"invalid {label} slug: {value!r}")
     return value
+
+
+def _dedupe_queries(queries: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        cleaned = " ".join(query.split()).strip()
+        key = cleaned.casefold()
+        if cleaned and key not in seen:
+            seen.add(key)
+            result.append(cleaned)
+    return result
+
+
+def _document_key(source: str) -> str:
+    name = Path(source.replace("\\", "/")).name
+    return unicodedata.normalize("NFC", name).casefold()
+
+
+def _merge_document_catalog(
+    existing: object,
+    fingerprints: Mapping[str, str],
+    updates: Mapping[str, Mapping[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    existing_catalog = existing if isinstance(existing, dict) else {}
+    update_catalog = updates or {}
+    result: dict[str, dict[str, Any]] = {}
+    for filename, digest in fingerprints.items():
+        value: dict[str, Any] = {}
+        previous = existing_catalog.get(filename)
+        if isinstance(previous, dict):
+            value.update(previous)
+        update = update_catalog.get(filename)
+        if isinstance(update, Mapping):
+            value.update(
+                {
+                    str(key): item
+                    for key, item in update.items()
+                    if item is not None
+                }
+            )
+        value["sha256"] = digest
+        result[filename] = value
+    return result
 
 
 def _sha256_file(path: Path) -> str:

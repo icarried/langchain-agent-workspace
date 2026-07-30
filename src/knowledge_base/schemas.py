@@ -31,6 +31,12 @@ class RetrievalResult(BaseModel):
     refused: bool = False
 
 
+class MultiQueryRetrievalResult(BaseModel):
+    queries: list[str] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    refused: bool = False
+
+
 class KnowledgeBaseInfo(BaseModel):
     name: str
     namespace: str

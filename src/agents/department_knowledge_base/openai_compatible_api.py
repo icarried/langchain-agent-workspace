@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
+import mimetypes
 import os
 import queue
 import re
@@ -10,6 +13,7 @@ import time
 import traceback
 import uuid
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -66,6 +70,7 @@ app = FastAPI(
 @app.get("/health")
 def health() -> dict[str, Any]:
     settings = agent.runtime.settings
+    task_stats = agent.runtime.import_tasks.stats()
     return {
         "status": "ok",
         "agent": "department-knowledge-base",
@@ -76,6 +81,8 @@ def health() -> dict[str, Any]:
         "object_store_configured": bool(
             settings.minio_access_key and settings.minio_secret_key
         ),
+        "query_rewrite_enabled": settings.query_rewrite_enabled,
+        **task_stats,
     }
 
 
@@ -112,6 +119,14 @@ def create_chat_completion(request: ChatCompletionRequest) -> Any:
         raise HTTPException(
             status_code=400,
             detail="knowledge_id is required for department knowledge-base requests",
+        )
+    if len(sources) > agent.runtime.settings.max_files_per_request:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "too many files; maximum is "
+                f"{agent.runtime.settings.max_files_per_request}"
+            ),
         )
 
     if request.stream:
@@ -304,12 +319,24 @@ def _stream_request(
             channel=channel,
         )
         break
+    file_payloads, download_notice = (
+        _source_file_payloads(result) if kind == "result" else ([], None)
+    )
+    if download_notice:
+        content += f"\n\n{download_notice}"
     yield _sse_delta(
         completion_id,
         created,
         request.model,
         content=content,
     )
+    for file_payload in file_payloads:
+        yield _sse_delta(
+            completion_id,
+            created,
+            request.model,
+            file_payload=file_payload,
+        )
     yield _sse_done(completion_id, created, request.model)
     yield "data: [DONE]\n\n"
 
@@ -374,9 +401,13 @@ def _completion(
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
     if result is not None:
+        files, download_notice = _source_file_payloads(result)
+        if download_notice:
+            payload["choices"][0]["message"]["content"] += f"\n\n{download_notice}"
         payload["knowledge_id"] = result.knowledge_id
         payload["department"] = result.department
         payload["intent"] = result.intent.value
+        payload["choices"][0]["message"]["files"] = files
     return JSONResponse(payload)
 
 
@@ -392,12 +423,15 @@ def _sse_delta(
     role: Literal["assistant"] | None = None,
     content: Any = None,
     channel: Literal["content", "reasoning_content"] = "content",
+    file_payload: dict[str, Any] | None = None,
 ) -> str:
     delta: dict[str, Any] = {}
     if role:
         delta["role"] = role
     if content is not None:
         delta[channel] = content
+    if file_payload is not None:
+        delta["file"] = file_payload
     return "data: " + json.dumps(
         {
             "id": completion_id,
@@ -421,6 +455,90 @@ def _sse_done(completion_id: str, created: int, model: str) -> str:
         },
         ensure_ascii=False,
     ) + "\n\n"
+
+
+def _source_file_payloads(
+    result: AgentResult,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Encode current source originals using the platform's existing file contract."""
+
+    if result.intent.value != "query" or not result.source_documents:
+        return [], None
+    settings = agent.runtime.settings
+    directory = agent.runtime.manager.active_documents_dir(result.knowledge_id)
+    payloads: list[dict[str, Any]] = []
+    total_bytes = 0
+    omitted = 0
+    for source in result.source_documents[: settings.max_download_files]:
+        filename = Path(source.filename.replace("\\", "/")).name
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {
+            ".bmp",
+            ".doc",
+            ".docx",
+            ".jpeg",
+            ".jpg",
+            ".markdown",
+            ".md",
+            ".pdf",
+            ".png",
+            ".tif",
+            ".tiff",
+            ".txt",
+            ".webp",
+        }:
+            continue
+        path = (directory / filename).resolve()
+        if directory.resolve() not in path.parents or not path.is_file():
+            omitted += 1
+            LOGGER.warning(
+                "source download skipped knowledge_id=%s filename=%s reason=missing",
+                result.knowledge_id,
+                filename,
+            )
+            continue
+        data = path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        if source.sha256 and digest != source.sha256:
+            omitted += 1
+            LOGGER.warning(
+                "source download skipped knowledge_id=%s filename=%s reason=sha_mismatch",
+                result.knowledge_id,
+                filename,
+            )
+            continue
+        if (
+            suffix
+            in {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
+            and len(data) > settings.max_download_image_bytes
+        ):
+            omitted += 1
+            continue
+        if total_bytes + len(data) > settings.max_download_bytes:
+            omitted += 1
+            break
+        total_bytes += len(data)
+        payloads.append(
+            {
+                "status": "completed",
+                "filename": filename,
+                "file_type": suffix.removeprefix("."),
+                "mime_type": (
+                    mimetypes.guess_type(filename)[0]
+                    or "application/octet-stream"
+                ),
+                "encoding": "base64",
+                "content_base64": base64.b64encode(data).decode("ascii"),
+                "sha256": digest,
+                "size": len(data),
+            }
+        )
+    notice = (
+        f"有 {omitted} 份来源原件因大小或校验限制未附加下载，请缩小检索范围或联系管理员。"
+        if omitted
+        else None
+    )
+    return payloads, notice
 
 
 def _streaming_response(generator: Generator[str, None, None]) -> StreamingResponse:

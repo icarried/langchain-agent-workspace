@@ -5,9 +5,11 @@ import zipfile
 from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
+from io import BytesIO
 from pathlib import Path
 from typing import Iterator
 
+from src.document_conversion import convert_doc_to_docx
 from src.document_ocr import OCRProvider
 from src.knowledge_base.loaders import DocumentRecord
 
@@ -16,7 +18,7 @@ from .settings import DepartmentKnowledgeBaseSettings
 
 TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
 IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
-SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | IMAGE_EXTENSIONS | {".docx", ".pdf"}
+SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | IMAGE_EXTENSIONS | {".doc", ".docx", ".pdf"}
 DocumentProgress = Callable[[str, str], None]
 _DOCUMENT_PROGRESS: ContextVar[DocumentProgress | None] = ContextVar(
     "department_kb_document_progress",
@@ -56,6 +58,13 @@ class AdaptiveDocumentLoader:
             text = path.read_text(encoding="utf-8-sig").strip()
         elif suffix == ".pdf":
             text = self._load_pdf(path)
+        elif suffix == ".doc":
+            converted = convert_doc_to_docx(
+                path.read_bytes(),
+                source=path.name,
+                timeout_seconds=self.settings.doc_conversion_timeout_seconds,
+            )
+            text = self._load_docx_bytes(converted, source=path.name)
         elif suffix == ".docx":
             text = self._load_docx(path)
         elif suffix in IMAGE_EXTENSIONS:
@@ -120,9 +129,12 @@ class AdaptiveDocumentLoader:
         return "\n\n".join(pages)
 
     def _load_docx(self, path: Path) -> str:
+        return self._load_docx_bytes(path.read_bytes(), source=path.name)
+
+    def _load_docx_bytes(self, data: bytes, *, source: str) -> str:
         from docx import Document
 
-        document = Document(str(path))
+        document = Document(BytesIO(data))
         paragraphs = [paragraph.text.strip() for paragraph in document.paragraphs]
         tables = [
             cell.text.strip()
@@ -135,7 +147,7 @@ class AdaptiveDocumentLoader:
             return local_text
 
         extracted: list[str] = [local_text] if local_text else []
-        with zipfile.ZipFile(path) as archive:
+        with zipfile.ZipFile(BytesIO(data)) as archive:
             media = sorted(
                 name
                 for name in archive.namelist()
@@ -144,25 +156,25 @@ class AdaptiveDocumentLoader:
             )
             if len(media) > self.settings.ocr_max_pages:
                 raise ValueError(
-                    f"{path.name!r} contains {len(media)} images; "
+                    f"{source!r} contains {len(media)} images; "
                     f"limit is {self.settings.ocr_max_pages}"
                 )
             for index, name in enumerate(media, start=1):
                 image_path = Path(name)
                 _emit_progress(
                     "ocr",
-                    f"正在 OCR：{path.name}，第 {index}/{len(media)} 个内嵌图片。",
+                    f"正在 OCR：{source}，第 {index}/{len(media)} 个内嵌图片。",
                 )
                 extracted.append(
                     self.ocr.extract_image(
                         archive.read(name),
                         _image_mime_type(image_path),
-                        source=f"{path.name}#image-{index}",
+                        source=f"{source}#image-{index}",
                     ).strip()
                 )
                 _emit_progress(
                     "ocr",
-                    f"OCR 已完成：{path.name}，第 {index}/{len(media)} 个内嵌图片。",
+                    f"OCR 已完成：{source}，第 {index}/{len(media)} 个内嵌图片。",
                 )
         return "\n\n".join(item for item in extracted if item)
 

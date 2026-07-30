@@ -78,6 +78,7 @@ Qwen3.5 把请求分类为：
 - `save`：明确要求保存、入库、归档或更新附件；
 - `query`：依据当前部门知识库问答；
 - `list`：列出当前部门文档；
+- `import_status`：查询当前部门最近或指定编号的导入任务；
 - `help`：使用说明；
 - `unknown`：删除、跨部门、权限变更或意图不清。
 
@@ -86,11 +87,23 @@ Qwen3.5 把请求分类为：
 同名新文件会替换当前可检索快照，避免新旧制度同时参与回答；MinIO 中的 SHA-256
 内容寻址原件不会被覆盖，因此旧版仍可由管理员审计或恢复。
 
-流式保存会立即报告空间、附件数量和意图，然后逐步报告附件下载校验、知识空间写锁、
-MinIO 原件归档、文档解析、逐页 OCR、向量生成、Chroma 构建和最终提交。长步骤默认
-每 10 秒发送一次心跳，可用 `DEPARTMENT_KB_STREAM_HEARTBEAT_SECONDS` 调整。
+每次保存都会创建持久化导入任务，默认最多 100 份、单文件 50 MiB、单批 500 MiB。
+流式保存会立即报告任务编号，随后逐文件报告暂存、解析、OCR、归档和原子发布；
+连接断开不会取消后台任务。非流式请求立即返回任务编号。用户可说“查看导入进度”
+或“查看任务 <任务编号>”。任务状态保留 30 天，但不保存预签名 URL。
+
+新文档发布会复制当前不可变 Chroma 快照，只删除并重建本批发生变化的文档向量；
+既有未变化文档不会再次解析或嵌入。只有首次建库、显式 rebuild 或 embedding 配置
+变化时才执行全量重建。长步骤默认每 10 秒发送一次心跳，可用
+`DEPARTMENT_KB_STREAM_HEARTBEAT_SECONDS` 调整。
 这些内容是执行状态，不是模型隐藏思维链；`thinking=true` 时进入
 `delta.reasoning_content`，否则进入普通 `delta.content`。
+
+提问会先由 DeepSeek 将原问题改写/拆分为最多 5 个独立查询，再对当前活动快照执行
+多查询召回和 RRF 融合；改写失败会自动回退到原问题，不影响问答。回答正文只使用
+实际检索证据，来源按文档名去重，不向用户显示 `#chunk-*`。每个本次命中的当前来源
+原件通过既有 `delta.file` 返回，最多 10 份、合计 50 MiB；AI 应用平台沿用现有
+生成文件持久化和附件下载控件，不需要第二轮“下载”请求。
 
 ## 数据与对象存储隔离
 
@@ -140,7 +153,9 @@ DEPARTMENT_KB_OBJECT_STORE_ENABLED=true
 
 ## OCR
 
-TXT/Markdown、文本型 DOCX/PDF 优先本地解析。扫描 PDF按页渲染，图片和图片型 DOCX
+TXT/Markdown、文本型 DOCX/PDF 优先本地解析。旧版 `.doc` 在解析阶段通过
+LibreOffice headless 临时转换为 DOCX，但活动快照、MinIO 和下载都保留原始 `.doc`
+字节与文件名。扫描 PDF按页渲染，图片和图片型 DOCX
 调用 GPU Stack `paddleocr-vl-1.6`。OCR 实现位于共享的 `src/document_ocr/` provider
 接口，后续可替换为官方 PaddleOCR-VL完整 Serving流水线。
 
