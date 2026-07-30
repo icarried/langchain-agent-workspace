@@ -921,7 +921,7 @@ GPU_STACK_CONTAINER_PROXY_URL=http://host.docker.internal:17897
 `GPU_STACK_CONTAINER_PROXY_URL` 为空，worker将直接访问 `GPU_STACK_BASE_URL`。
 本机不要把 `10.100.5.33` 加入 `NO_PROXY`。
 
-平台模型 ID为 `image-generation-agent`。无图片调用 `qwen-image`，有图片调用
+平台模型 ID为 `image-generation-agent`。无图片调用 `z-image-turbo`，有图片调用
 `qwen-image-edit`；最近助手图片可作为下一轮默认底图。完整平台改造见
 `docs/development/AI_APP_PLATFORM_IMAGE_OUTPUT_HANDOFF.md`。
 

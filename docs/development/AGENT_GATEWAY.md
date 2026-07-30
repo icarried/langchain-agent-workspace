@@ -109,7 +109,7 @@ POST /v1/knowledge-bases/{name}/retrieval
 `qwen3-vl-embedding-8b`。嵌入模型或 Base URL变化时必须显式
 `ingest --rebuild`，不得将旧向量与新向量混用。
 
-### 八部门隔离知识库
+### 部门及公司规定隔离知识库
 
 模型 `department-knowledge-base-agent` 在同一
 `POST /v1/chat/completions` 请求中接受与 `thinking` 同级的 `knowledge_id`。
@@ -124,16 +124,17 @@ operations-service
 procurement-implementation
 finance
 general-management
+company-regulations
 ```
 
-网关原样转发扩展字段，worker 再做白名单校验。平台可创建八个模型配置，Base URL、
-模型 ID 和 API key 相同，只固定不同 `knowledge_id`；部门用户不获得 API key，也不能
-从对话文本切换部门。
+网关原样转发扩展字段，worker 再做白名单校验。平台可创建九个模型配置，Base URL、
+模型 ID 和 API key 相同，只固定不同 `knowledge_id`；用户不获得 API key，也不能
+从对话文本切换知识空间。
 
 附件可通过 `files` 数组、`file_url` / `image_url` content parts或消息中的 HTTP(S)
 URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件时，worker才把原件归档
 到本项目专属 MinIO并更新该部门 Chroma。专属 MinIO只在 Compose内部暴露
-`department-kb-minio:9000`，不发布宿主机端口；八个部门分别使用独立 bucket。
+`department-kb-minio:9000`，不发布宿主机端口；九个知识空间分别使用独立 bucket。
 详细协议、bucket、OCR和 dry-run说明见
 `src/agents/department_knowledge_base/README.md`。
 

@@ -140,9 +140,10 @@ def _agent(tmp_path: Path) -> tuple[DepartmentKnowledgeBaseAgent, FakeManager]:
     return DepartmentKnowledgeBaseAgent(runtime), manager
 
 
-def test_eight_departments_are_fixed_and_unknown_scope_is_rejected() -> None:
-    assert len(DEPARTMENTS) == 8
+def test_nine_knowledge_spaces_are_fixed_and_unknown_scope_is_rejected() -> None:
+    assert len(DEPARTMENTS) == 9
     assert get_department("company-leadership").display_name == "公司领导层"
+    assert get_department("company-regulations").display_name == "公司规定"
     try:
         get_department("finance/../marketing")
     except ValueError as exc:

@@ -15,7 +15,7 @@ GPU_STACK_BASE_URL = "http://10.100.5.33:8003/v1"
 GPU_STACK_DEEPSEEK_MODEL = "deepseek-v4-flash"
 GPU_STACK_VISION_MODEL = "qwen3.5-122b-a10b"
 GPU_STACK_EMBEDDING_MODEL = "qwen3-vl-embedding-8b"
-GPU_STACK_IMAGE_MODEL = "qwen-image"
+GPU_STACK_IMAGE_MODEL = "z-image-turbo"
 GPU_STACK_IMAGE_EDIT_MODEL = "qwen-image-edit"
 GPU_STACK_OCR_MODEL = "paddleocr-vl-1.6"
 

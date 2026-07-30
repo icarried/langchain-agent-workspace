@@ -20,6 +20,7 @@ DEPARTMENTS: dict[str, Department] = {
         Department("procurement-implementation", "采购实施部"),
         Department("finance", "经营财务部"),
         Department("general-management", "综合管理部"),
+        Department("company-regulations", "公司规定"),
     )
 }
 

@@ -1,6 +1,6 @@
 # Department Knowledge Base Agent
 
-面向八个部门的隔离知识库智能体。生产统一使用：
+面向八个部门及“公司规定”的隔离知识库智能体。生产统一使用：
 
 ```text
 Base URL: http://<host>:8008/v1
@@ -19,6 +19,7 @@ Model: department-knowledge-base-agent
 | `procurement-implementation` | 采购实施部 |
 | `finance` | 经营财务部 |
 | `general-management` | 综合管理部 |
+| `company-regulations` | 公司规定 |
 
 `knowledge_id` 是 Chat Completions 请求体中与 `thinking` 同级的扩展字段。网关会原样
 转发未知 OpenAI 扩展字段。服务端只接受上表固定值，不从用户消息推导、覆盖或切换
@@ -71,7 +72,7 @@ Model: department-knowledge-base-agent
 顶层字符串或 `{url, filename}` 对象形式的 `files`。重复 URL 同时从旧、新入口出现时
 只保留一次，并优先采用带原名的引用。`files`、`knowledge_id` 都是本 worker 的
 OpenAI-compatible 扩展字段。
-平台应在八个模型配置中固定不同 `knowledge_id`，不要让部门用户编辑该字段。
+平台应在九个模型配置中固定不同 `knowledge_id`，不要让用户编辑该字段。
 
 Qwen3.5 把请求分类为：
 

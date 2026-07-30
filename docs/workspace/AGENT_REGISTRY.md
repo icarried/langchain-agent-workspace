@@ -22,10 +22,10 @@
 ### department-knowledge-base
 
 - 状态: Ready
-- 用途: 八部门共享入口、严格空间隔离的 RAG智能体；Qwen3.5识别保存/问答/列表/帮助意图，PaddleOCR-VL-1.6处理扫描文件。
+- 用途: 八部门及“公司规定”共享入口、严格空间隔离的 RAG智能体；Qwen3.5识别保存/问答/列表/帮助意图，PaddleOCR-VL-1.6处理扫描文件。
 - 源码路径: `src/agents/department_knowledge_base/`
 - OpenAI-compatible入口: 统一网关 `http://<host>:8008/v1`，模型 ID `department-knowledge-base-agent`；顶层扩展字段 `knowledge_id` 固定部门空间。
-- 数据隔离: namespace `department-knowledge-base-agent` 下八个独立 Chroma目录；专属 MinIO中八个独立 `department-kb-<knowledge_id>` bucket。
+- 数据隔离: namespace `department-knowledge-base-agent` 下九个独立 Chroma目录；专属 MinIO中九个独立 `department-kb-<knowledge_id>` bucket。
 - 对象存储: `ai-app-platform` MinIO只做上传入口；项目 Compose内 `department-kb-minio:9000` 保存长期原件且不发布宿主机端口。
 - 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`、`DEPARTMENT_KB_MINIO_ACCESS_KEY`、`DEPARTMENT_KB_MINIO_SECRET_KEY`及可选 `DEPARTMENT_KB_*` 覆盖变量。
 - 关联任务: T-043a
@@ -46,7 +46,7 @@
 ### image-generation
 
 - 状态: In Development
-- 用途: 对话式图片生成与编辑；Qwen3.5结合文本和图片改写提示词，无底图调用 `qwen-image`，有底图调用 `qwen-image-edit`，并自动沿用最近助手图片。
+- 用途: 对话式图片生成与编辑；Qwen3.5结合文本和图片改写提示词，无底图调用 `z-image-turbo`，有底图调用 `qwen-image-edit`，并自动沿用最近助手图片。
 - 源码路径: `src/agents/image_generation/`
 - 运行入口: `python -m src.agents.image_generation "<prompt>" --dry-run`
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `image-generation-agent`。

@@ -128,10 +128,10 @@
 - 影响: AI 平台需增加视频产物处理和 `video_delta`；下载来源必须使用主机/CIDR白名单、
   大小和超时限制。Agent暂时保留 `video.content_url` 作为旧客户端兼容字段。
 
-## 2026-07-28 - 八部门知识库使用固定空间参数和项目专属 MinIO
+## 2026-07-28 - 部门及公司规定知识库使用固定空间参数和项目专属 MinIO
 
 - 决策: 新增 `department-knowledge-base-agent`，同一 OpenAI-compatible模型通过请求
-  顶层 `knowledge_id` 选择八个固定部门空间；字段只接受服务端白名单，不从用户文字
+  顶层 `knowledge_id` 选择八个固定部门空间及独立的“公司规定”空间；字段只接受服务端白名单，不从用户文字
   推导，未知或缺少值直接拒绝。
 - 决策: Qwen3.5只识别 `save/query/list/help/unknown` 意图；附件存在不等于保存，
   删除、跨部门访问和权限变更不由 LLM执行。

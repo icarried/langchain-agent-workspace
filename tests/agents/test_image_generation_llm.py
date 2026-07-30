@@ -25,6 +25,12 @@ from src.agents.image_generation.settings import ImageGenerationSettings
 PNG_BYTES = base64.b64decode(DRY_RUN_IMAGE.split(",", 1)[1])
 
 
+def test_default_generation_and_edit_models() -> None:
+    settings = ImageGenerationSettings()
+    assert settings.image_generation_model == "z-image-turbo"
+    assert settings.image_edit_model == "qwen-image-edit"
+
+
 def _image_part(url: str) -> dict:
     return {"type": "image_url", "image_url": {"url": url}}
 
