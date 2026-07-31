@@ -19,5 +19,6 @@ langsmith>=0.1,<0.4
 chromadb>=0.5,<0.7
 minio>=7.2,<8
 PyYAML>=6,<7
+sse-starlette==3.0.3
 mcp==1.28.0
 fastmcp==2.14.7

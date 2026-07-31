@@ -21,6 +21,7 @@ dependencies:
       - chromadb
       - minio
       - pydantic-settings
+      - sse-starlette==3.0.3
       - mcp==1.28.0
       - fastmcp==2.14.7
       - fastapi
