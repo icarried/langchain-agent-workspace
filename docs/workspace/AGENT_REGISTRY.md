@@ -13,8 +13,9 @@
 ## 统一部署入口
 
 - OpenAI-compatible 生产入口统一为 `http://<host>:8008/v1`，模型由请求体 `model` 选择。
+- MCP生产入口统一为 `http://<host>:8008/mcp`；首期只代理部门知识库只读 MCP。
 - `GET /v1/models` 只列出健康 worker。Compose 中每个 worker 独立监听内部 `8080`，不发布宿主机端口。
-- 原 REST API、MCP 和独立 OpenAI-compatible 端口仅保留源码用于单智能体调试，不进入生产 Compose。
+- 其他历史独立 REST、MCP 和 OpenAI-compatible端口仅保留源码用于单智能体调试，不进入生产 Compose。
 - 部署、鉴权、附件和知识库说明见 `docs/development/AGENT_GATEWAY.md`。
 
 ## 智能体列表
@@ -25,10 +26,11 @@
 - 用途: 八部门及“公司规定”共享入口、严格空间隔离的 RAG智能体；Qwen3.5识别保存/问答/列表/帮助意图，PaddleOCR-VL-1.6处理扫描文件。
 - 源码路径: `src/agents/department_knowledge_base/`
 - OpenAI-compatible入口: 统一网关 `http://<host>:8008/v1`，模型 ID `department-knowledge-base-agent`；顶层扩展字段 `knowledge_id` 固定部门空间。
+- MCP入口: `http://<host>:8008/mcp`；只读工具为 `department_kb_list_spaces`、`department_kb_query`、`department_kb_get_import_status`。工具不接受 `knowledge_id`，Bearer token在 `DEPARTMENT_KB_MCP_TOKENS_JSON` 中固定绑定一个空间。
 - 数据隔离: namespace `department-knowledge-base-agent` 下九个独立 Chroma目录；专属 MinIO中九个独立 `department-kb-<knowledge_id>` bucket。
 - 对象存储: `ai-app-platform` MinIO只做上传入口；项目 Compose内 `department-kb-minio:9000` 保存长期原件且不发布宿主机端口。
-- 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`、`DEPARTMENT_KB_MINIO_ACCESS_KEY`、`DEPARTMENT_KB_MINIO_SECRET_KEY`及可选 `DEPARTMENT_KB_*` 覆盖变量。
-- 关联任务: T-043a
+- 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`、`DEPARTMENT_KB_MINIO_ACCESS_KEY`、`DEPARTMENT_KB_MINIO_SECRET_KEY`、`DEPARTMENT_KB_MCP_TOKENS_JSON`及可选 `DEPARTMENT_KB_*` 覆盖变量。
+- 关联任务: T-043a、T-055
 - 备注: 部门用户不获得网关或 MinIO凭证；用户文字不能切换知识空间。删除、跨部门和权限变更不交给 LLM执行。
 
 ### comfyui-video-generation

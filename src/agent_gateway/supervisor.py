@@ -97,7 +97,34 @@ class DevelopmentSupervisor:
         env["AGENT_GATEWAY_UPSTREAM_OVERRIDES"] = json.dumps(
             {worker.spec.id: f"http://127.0.0.1:{worker.port}" for worker in self.workers}
         )
+        worker_urls = {
+            worker.spec.id: f"http://127.0.0.1:{worker.port}"
+            for worker in self.workers
+        }
+        selected_mcp = [
+            spec
+            for spec in self.registry.mcp_specs.values()
+            if spec.model_id in worker_urls
+        ]
+        env["AGENT_GATEWAY_MCP_UPSTREAM_OVERRIDES"] = json.dumps(
+            {
+                spec.id: f"{worker_urls[spec.model_id]}/mcp"
+                for spec in selected_mcp
+                if spec.model_id is not None
+            }
+        )
         registry_payload = {
+            "mcp_servers": [
+                {
+                    "id": spec.id,
+                    "model_id": spec.model_id,
+                    "upstream": spec.upstream,
+                    "health_upstream": worker_urls[spec.model_id],
+                    "default": spec.default,
+                }
+                for spec in selected_mcp
+                if spec.model_id is not None
+            ],
             "models": [
                 {
                     "id": worker.spec.id,

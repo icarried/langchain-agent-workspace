@@ -1,4 +1,13 @@
 {
+  "mcp_servers": [
+    {
+      "id": "department-knowledge-base",
+      "model_id": "department-knowledge-base-agent",
+      "upstream": "http://department-knowledge-base:8080/mcp",
+      "health_upstream": "http://department-knowledge-base:8080",
+      "default": true
+    }
+  ],
   "models": [
     {
       "id": "batch-resume-review-agent",

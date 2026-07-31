@@ -7,6 +7,18 @@ Base URL: http://<host>:8008/v1
 Model: department-knowledge-base-agent
 ```
 
+统一 MCP入口为 `http://<host>:8008/mcp`，使用 Streamable HTTP和 Bearer token。
+每个 token必须在 `DEPARTMENT_KB_MCP_TOKENS_JSON` 中固定绑定一个 `knowledge_id`；
+三个只读工具的参数中均没有 `knowledge_id`，MCP客户端不能在调用时切换部门：
+
+```text
+department_kb_list_spaces
+department_kb_query(question, top_k?)
+department_kb_get_import_status(task_id?)
+```
+
+首期 MCP不提供保存、删除、重建或任意原件下载工具。
+
 ## 知识空间
 
 | knowledge_id | 部门 |

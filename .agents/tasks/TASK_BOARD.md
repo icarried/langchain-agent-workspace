@@ -9,6 +9,28 @@
 
 ## 当前任务
 
+### T-055 统一网关增加部门知识库 MCP 入口
+
+- 状态: Done
+- 目标: 在现有统一 OpenAI-compatible 网关的同一公开端口增加 Streamable HTTP MCP，首期只暴露部门知识库只读能力。
+- 验收标准:
+  - `http://<host>:8008/mcp` 可发现并调用部门知识库空间枚举、查询和导入状态工具。
+  - MCP 与 OpenAI 模型使用独立注册和健康状态，任一协议故障不错误隐藏另一协议能力。
+  - MCP Bearer token 只能访问显式授权的 `knowledge_id`，首期不开放保存、删除或重建。
+  - 部门 worker、MinIO 和知识库卷保持 Compose 内部，宿主机仍只公开网关端口。
+  - 聚焦测试、Ruff、Compose 配置和 MCP 客户端调用通过。
+- 执行计划:
+  - 增加部门知识库薄 MCP 适配器和空间级 token scope。
+  - 扩展网关注册表、健康检查和 `/mcp` 流式代理。
+  - 补充环境模板、部署配置、运行文档和架构决策。
+  - 执行 Windows Conda 与 WSL Compose 配置层验证。
+- 验证:
+  - 部门 MCP、部门 OpenAI-compatible 和统一网关聚焦回归：42 passed。
+  - Ruff、compileall、网关 JSON 和 `git diff --check` 通过。
+  - WSL `Ubuntu` 中 `docker compose config --quiet` 通过，渲染配置仍只发布 `8008/tcp`。
+  - 原生 MCP JSON-RPC验证工具发现和调用成功，三个工具 schema均不含 `knowledge_id`。
+- 最后更新: 2026-07-31（完成）
+
 ### T-053 新增“公司规定”知识库空间
 
 - 状态: Done

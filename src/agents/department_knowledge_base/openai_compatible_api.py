@@ -37,6 +37,7 @@ from src.knowledge_base.manager import RebuildRequiredError
 from .constants import MODEL_ID
 from .departments import DEPARTMENTS
 from .intent import IntentRecognitionError
+from .mcp_server import build_mcp_server
 from .schemas import AgentResult, ProgressEvent
 from .service import DepartmentKnowledgeBaseAgent
 
@@ -61,10 +62,14 @@ class ChatCompletionRequest(OpenAIChatCompletionRequest):
 
 
 agent = DepartmentKnowledgeBaseAgent()
+mcp = build_mcp_server(agent)
+mcp_http_app = mcp.http_app(path="/", stateless_http=True)
 app = FastAPI(
     title="Department Knowledge Base OpenAI-compatible API",
     version="0.1.0",
+    lifespan=mcp_http_app.lifespan,
 )
+app.mount("/mcp", mcp_http_app)
 
 
 @app.get("/health")

@@ -29,6 +29,28 @@ Stream: enabled
 
 生产环境应设置 `AGENT_GATEWAY_API_KEY`。请求使用 `Authorization: Bearer <key>`；默认不设置时关闭鉴权，以兼容现有平台。
 
+## 统一 MCP入口
+
+远程 MCP客户端统一连接：
+
+```text
+URL: http://<host>:8008/mcp
+Transport: Streamable HTTP
+Authorization: Bearer <部门专用 MCP token>
+```
+
+首期 MCP注册与模型注册相互独立，只代理 `department-knowledge-base`。三个只读工具为
+`department_kb_list_spaces`、`department_kb_query`和
+`department_kb_get_import_status`。工具 schema不包含 `knowledge_id`；每个 token必须在
+`DEPARTMENT_KB_MCP_TOKENS_JSON` 中固定绑定恰好一个知识空间。需要另一个部门时应新增
+另一个 token和 MCP连接配置，不能在工具调用中选择部门。首期不开放保存、删除、重建
+或任意原件下载。
+
+`AGENT_GATEWAY_API_KEY` 与部门 MCP token用途不同，不得互相替代。网关原样转发 MCP
+协议头和 SSE，不缓存响应；部门 worker负责 token scope校验。MCP不可用不会隐藏
+`/v1/models` 中健康的 OpenAI模型。浏览器客户端必须把精确 Origin加入
+`AGENT_MCP_ALLOWED_ORIGINS`；非浏览器 MCP客户端通常不发送 Origin。
+
 ## 本机开发
 
 ```powershell
@@ -175,3 +197,7 @@ URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件�
 2. 在 `config/agent_gateway.json` 登记稳定模型 ID、模块入口和 worker URL。
 3. 在 `compose.yaml` 新增独立 worker 服务，内部监听 `8080`，不要发布宿主机端口。
 4. 更新智能体登记表和平台文档，并补充网关聚合、流式代理和故障隔离测试。
+
+新增 MCP backend时在同一注册表的 `mcp_servers` 中单独登记。当前 `/mcp`只允许一个
+默认 backend；接入第二个 MCP前应启用 FastMCP composition并为工具增加稳定命名空间，
+不能让多个 backend争用默认路由。

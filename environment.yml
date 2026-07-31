@@ -21,8 +21,8 @@ dependencies:
       - chromadb
       - minio
       - pydantic-settings
-      - mcp
-      - fastmcp
+      - mcp==1.28.0
+      - fastmcp==3.4.2
       - fastapi
       - uvicorn
       - typer

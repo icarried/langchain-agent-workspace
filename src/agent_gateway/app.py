@@ -15,6 +15,18 @@ from .runtime import GatewayRuntime
 
 FORWARDED_REQUEST_HEADERS = {"accept", "content-type", "user-agent", "x-request-id"}
 FORWARDED_RESPONSE_HEADERS = {"cache-control", "content-type", "x-accel-buffering", "x-request-id"}
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "content-length",
+    "host",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+}
 
 
 def create_app(
@@ -51,7 +63,84 @@ def create_app(
                 }
                 for model_id, status in statuses.items()
             },
+            "mcp_servers": {
+                server_id: {
+                    "healthy": status.healthy,
+                    "detail": status.detail,
+                    "checked_at": status.checked_at,
+                }
+                for server_id, status in selected_registry.mcp_statuses.items()
+            },
         }
+
+    @gateway.api_route(
+        "/mcp",
+        methods=["GET", "POST", "DELETE", "OPTIONS"],
+    )
+    @gateway.api_route(
+        "/mcp/{subpath:path}",
+        methods=["GET", "POST", "DELETE", "OPTIONS"],
+    )
+    async def mcp_proxy(request: Request, subpath: str = "") -> Response:
+        origin_error = _validate_mcp_origin(request)
+        if origin_error:
+            return origin_error
+        spec = selected_registry.default_mcp_server()
+        if spec is None:
+            return JSONResponse(
+                {"error": "no default MCP server is configured"},
+                status_code=503,
+            )
+        status = selected_registry.mcp_statuses[spec.id]
+        if not status.healthy:
+            return JSONResponse(
+                {"error": "MCP service is temporarily unavailable"},
+                status_code=503,
+            )
+        suffix = f"/{subpath}" if subpath else ""
+        query = f"?{request.url.query}" if request.url.query else ""
+        upstream_url = f"{spec.upstream}{suffix}{query}"
+        headers = {
+            key: value
+            for key, value in request.headers.items()
+            if key.lower() not in HOP_BY_HOP_HEADERS
+        }
+        try:
+            upstream_request = selected_runtime.client.build_request(
+                request.method,
+                upstream_url,
+                content=await request.body(),
+                headers=headers,
+            )
+            upstream = await selected_runtime.client.send(upstream_request, stream=True)
+        except (httpx.HTTPError, OSError) as exc:
+            selected_runtime.mark_mcp_unhealthy(spec.id, exc)
+            return JSONResponse(
+                {"error": "MCP service is temporarily unavailable"},
+                status_code=503,
+            )
+
+        response_headers = {
+            key: value
+            for key, value in upstream.headers.items()
+            if key.lower() not in HOP_BY_HOP_HEADERS
+        }
+
+        async def proxy_body() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in upstream.aiter_raw():
+                    yield chunk
+            except (httpx.HTTPError, OSError) as exc:
+                selected_runtime.mark_mcp_unhealthy(spec.id, exc)
+            finally:
+                await upstream.aclose()
+
+        return StreamingResponse(
+            proxy_body(),
+            status_code=upstream.status_code,
+            headers=response_headers,
+            media_type=None,
+        )
 
     @gateway.get("/v1/models")
     async def models(request: Request) -> Response:
@@ -133,6 +222,20 @@ def _authorize(request: Request) -> JSONResponse | None:
         return None
     if request.headers.get("authorization") != f"Bearer {required}":
         return _openai_error(401, "invalid API key", "authentication_error", code="invalid_api_key")
+    return None
+
+
+def _validate_mcp_origin(request: Request) -> JSONResponse | None:
+    origin = request.headers.get("origin")
+    if not origin:
+        return None
+    allowed = {
+        item.strip()
+        for item in os.getenv("AGENT_MCP_ALLOWED_ORIGINS", "").split(",")
+        if item.strip()
+    }
+    if origin not in allowed:
+        return JSONResponse({"error": "MCP origin is not allowed"}, status_code=403)
     return None
 
 

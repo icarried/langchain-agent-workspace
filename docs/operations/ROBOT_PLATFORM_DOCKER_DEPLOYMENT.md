@@ -84,9 +84,16 @@ GPU_STACK_CONTAINER_PROXY_URL=
 DEPARTMENT_KB_MINIO_ACCESS_KEY=<项目独立随机账号>
 DEPARTMENT_KB_MINIO_SECRET_KEY=<项目独立强密码>
 DEPARTMENT_KB_OBJECT_STORE_ENABLED=true
+DEPARTMENT_KB_MCP_TOKENS_JSON=<每个随机 token 固定绑定一个 knowledge_id 的 JSON 映射>
+# 仅浏览器 MCP 客户端需要；普通桌面/服务端 MCP 客户端保持为空。
+AGENT_MCP_ALLOWED_ORIGINS=
 COMFYUI_I2V_BASE_URL=http://10.180.26.16:8188
 COMFYUI_I2V_PUBLIC_BASE_URL=http://10.180.26.16:8188
 ```
+
+`DEPARTMENT_KB_MCP_TOKENS_JSON` 中每个 token只能绑定一个 `knowledge_id`，推荐九个知识
+空间分别生成独立 token。不要把 token写入 release目录、Git、共享文档或命令输出日志。
+轮换某个部门时只替换该 token并重建 `department-knowledge-base` worker；其他部门不受影响。
 
 知识库 chat/embedding key 可与 GPU Stack key 使用同一凭证，但仍通过
 `KB_OPENAI_API_KEY` 和 `KB_EMBEDDING_API_KEY` 分别注入。不要复用

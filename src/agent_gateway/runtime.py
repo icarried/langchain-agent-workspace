@@ -37,7 +37,10 @@ class GatewayRuntime:
         await self.client.aclose()
 
     async def probe_all(self) -> None:
-        await asyncio.gather(*(self.probe(model_id) for model_id in self.registry.specs))
+        await asyncio.gather(
+            *(self.probe(model_id) for model_id in self.registry.specs),
+            *(self.probe_mcp(server_id) for server_id in self.registry.mcp_specs),
+        )
 
     async def probe(self, model_id: str) -> None:
         spec = self.registry.specs[model_id]
@@ -60,6 +63,39 @@ class GatewayRuntime:
 
     def mark_unhealthy(self, model_id: str, exc: Exception | str) -> None:
         status = self.registry.statuses[model_id]
+        status.healthy = False
+        status.detail = _safe_error(exc)
+        status.checked_at = time.time()
+
+    async def probe_mcp(self, server_id: str) -> None:
+        spec = self.registry.mcp_specs[server_id]
+        status = self.registry.mcp_statuses[server_id]
+        try:
+            response = await self.client.post(
+                spec.upstream,
+                headers={
+                    "accept": "application/json, text/event-stream",
+                    "content-type": "application/json",
+                    "mcp-protocol-version": "2025-11-25",
+                },
+                json={
+                    "jsonrpc": "2.0",
+                    "id": "gateway-health",
+                    "method": "tools/list",
+                    "params": {},
+                },
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            status.healthy = False
+            status.detail = _safe_error(exc)
+        else:
+            status.healthy = True
+            status.detail = "ok"
+        status.checked_at = time.time()
+
+    def mark_mcp_unhealthy(self, server_id: str, exc: Exception | str) -> None:
+        status = self.registry.mcp_statuses[server_id]
         status.healthy = False
         status.detail = _safe_error(exc)
         status.checked_at = time.time()

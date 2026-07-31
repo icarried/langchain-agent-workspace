@@ -29,6 +29,7 @@
 - 已新增 `comfyui-image-to-video-agent`，支持单图输入、视觉提示词改写和受限的自然语言视频参数。
 - 已将知识库重做为工作区级 `src/knowledge_base/` 可复用核心，按 agent namespace 和知识库名称隔离 Chroma 数据，不兼容旧 primary/secondary 数据。
 - 已新增八部门及“公司规定”隔离知识库智能体，通过 `knowledge_id` 在同一模型接口选择固定知识空间，并使用本项目专属 MinIO 保存长期原件。
+- 统一网关同时提供 `8008/mcp` Streamable HTTP入口；首期只开放部门知识库只读工具，每个 MCP token在接入配置时固定绑定一个知识空间。
 
 ## 推荐目录
 
