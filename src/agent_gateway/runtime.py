@@ -72,7 +72,7 @@ class GatewayRuntime:
         status = self.registry.mcp_statuses[server_id]
         try:
             response = await self.client.post(
-                spec.upstream,
+                f"{spec.upstream}/",
                 headers={
                     "accept": "application/json, text/event-stream",
                     "content-type": "application/json",

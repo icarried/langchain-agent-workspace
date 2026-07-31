@@ -163,7 +163,7 @@ def test_mcp_proxy_forwards_protocol_headers_and_body():
     assert response.status_code == 200
     assert response.headers["mcp-session-id"] == "session-1"
     assert received == {
-        "path": "/mcp",
+        "path": "/mcp/",
         "authorization": "Bearer scoped-token",
         "protocol": "2025-11-25",
         "body": b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
@@ -251,5 +251,5 @@ def test_mcp_probe_checks_protocol_endpoint():
     asyncio.run(runtime.close())
 
     assert registry.mcp_statuses["department-kb"].healthy is True
-    assert received["path"] == "/mcp"
+    assert received["path"] == "/mcp/"
     assert received["payload"]["method"] == "tools/list"

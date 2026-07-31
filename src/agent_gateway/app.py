@@ -97,7 +97,10 @@ def create_app(
                 {"error": "MCP service is temporarily unavailable"},
                 status_code=503,
             )
-        suffix = f"/{subpath}" if subpath else ""
+        # Starlette-mounted ASGI apps canonicalize the mount root with a trailing
+        # slash. Address it directly so MCP POST bodies and auth headers never
+        # pass through a redirect.
+        suffix = f"/{subpath}" if subpath else "/"
         query = f"?{request.url.query}" if request.url.query else ""
         upstream_url = f"{spec.upstream}{suffix}{query}"
         headers = {
