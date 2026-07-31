@@ -18,3 +18,5 @@ langsmith>=0.1,<0.4
 chromadb>=0.5,<0.7
 minio>=7.2,<8
 PyYAML>=6,<7
+mcp==1.28.0
+fastmcp==3.4.2
