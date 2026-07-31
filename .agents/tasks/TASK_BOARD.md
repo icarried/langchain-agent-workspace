@@ -27,7 +27,7 @@
 - 验证:
   - 部门 MCP、部门 OpenAI-compatible 和统一网关聚焦回归：42 passed。
   - Ruff、compileall、网关 JSON 和 `git diff --check` 通过。
-  - Linux生产依赖同步加入并锁定 `mcp==1.28.0`、`fastmcp==3.4.2`。
+  - Linux生产依赖同步加入并锁定 `mcp==1.28.0`、`fastmcp==2.14.7`；保持现有 FastAPI/Starlette 兼容边界。
   - WSL `Ubuntu` 中 `docker compose config --quiet` 通过，渲染配置仍只发布 `8008/tcp`。
   - 原生 MCP JSON-RPC验证工具发现和调用成功，三个工具 schema均不含 `knowledge_id`。
 - 最后更新: 2026-07-31（完成）

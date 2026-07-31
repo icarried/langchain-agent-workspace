@@ -22,7 +22,7 @@ dependencies:
       - minio
       - pydantic-settings
       - mcp==1.28.0
-      - fastmcp==3.4.2
+      - fastmcp==2.14.7
       - fastapi
       - uvicorn
       - typer
