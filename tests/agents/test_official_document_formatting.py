@@ -10,6 +10,7 @@ from docx.shared import Cm
 from src.agents.official_document_formatting.formatter import format_docx
 from src.agents.official_document_formatting.graph import build_graph
 from src.agents.official_document_formatting.service import format_official_document
+import src.agents.official_document_formatting.service as formatting_service
 
 
 def _make_company_sample(path: Path) -> Path:
@@ -183,3 +184,22 @@ def test_service_rejects_non_docx_input(tmp_path: Path) -> None:
         assert "DOCX" in str(exc)
     else:
         raise AssertionError("non-DOCX input should be rejected")
+
+
+def test_service_converts_legacy_doc_then_returns_docx(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    converted = _make_company_sample(tmp_path / "converted.docx").read_bytes()
+    source = tmp_path / "input.doc"
+    source.write_bytes(b"legacy-doc-placeholder")
+    monkeypatch.setattr(
+        formatting_service,
+        "convert_doc_to_docx",
+        lambda data, *, source: converted,
+    )
+
+    result = format_official_document(source)
+
+    assert result["filename"] == "input-公文格式化.docx"
+    assert result["content"].startswith(b"PK")

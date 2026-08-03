@@ -7,6 +7,8 @@ from pathlib import Path
 
 from docx import Document
 from fastapi.testclient import TestClient
+from fastmcp import Client
+import pytest
 
 from src.agents.official_document_formatting.openai_compatible_api import (
     MODEL_ID,
@@ -14,6 +16,9 @@ from src.agents.official_document_formatting.openai_compatible_api import (
     app,
     parse_document_request,
 )
+from src.agents.official_document_formatting.mcp_server import mcp
+import src.agents.official_document_formatting.service as formatting_service
+import src.agents.official_document_formatting.mcp_server as formatting_mcp_server
 
 
 def _make_docx(path: Path) -> Path:
@@ -148,3 +153,99 @@ def test_dry_run_returns_report_without_file(tmp_path: Path) -> None:
     assert "dry-run" in message["content"]
     assert "未验证" in message["content"]
     assert "file" not in message
+
+
+def test_non_stream_completion_converts_legacy_doc(tmp_path: Path, monkeypatch) -> None:
+    converted = _make_docx(tmp_path / "converted.docx").read_bytes()
+    source = tmp_path / "input.doc"
+    source.write_bytes(b"legacy-doc-placeholder")
+    monkeypatch.setattr(
+        formatting_service,
+        "convert_doc_to_docx",
+        lambda data, *, source: converted,
+    )
+
+    response = TestClient(app).post(
+        "/v1/chat/completions", json=_payload(source, stream=False)
+    )
+
+    assert response.status_code == 200
+    file_payload = response.json()["choices"][0]["message"]["file"]
+    assert file_payload["filename"] == "input-公文格式化.docx"
+    assert base64.b64decode(file_payload["content_base64"], validate=True).startswith(b"PK")
+
+
+@pytest.mark.asyncio
+async def test_mcp_formats_docx_and_returns_file(tmp_path: Path) -> None:
+    source = _make_docx(tmp_path / "input.docx")
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "format_document",
+            {
+                "document": {
+                    "filename": source.name,
+                    "content_base64": base64.b64encode(source.read_bytes()).decode(),
+                },
+                "dry_run": False,
+            },
+        )
+
+    output = base64.b64decode(result.data["content_base64"], validate=True)
+    assert result.data["filename"] == "input-公文格式化.docx"
+    assert hashlib.sha256(output).hexdigest() == result.data["sha256"]
+    assert output.startswith(b"PK")
+
+
+@pytest.mark.asyncio
+async def test_mcp_formats_legacy_doc_and_returns_docx(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    converted = _make_docx(tmp_path / "converted.docx").read_bytes()
+    source = tmp_path / "input.doc"
+    source.write_bytes(b"legacy-doc-placeholder")
+    monkeypatch.setattr(
+        formatting_service,
+        "convert_doc_to_docx",
+        lambda data, *, source: converted,
+    )
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "format_document",
+            {
+                "document": {
+                    "filename": source.name,
+                    "content_base64": base64.b64encode(source.read_bytes()).decode(),
+                }
+            },
+        )
+
+    output = base64.b64decode(result.data["content_base64"], validate=True)
+    assert result.data["filename"] == "input-公文格式化.docx"
+    assert result.data["mime_type"].endswith("wordprocessingml.document")
+    assert output.startswith(b"PK")
+
+
+@pytest.mark.asyncio
+async def test_mcp_formats_minio_url_and_returns_docx(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = _make_docx(tmp_path / "input.docx")
+    minio_url = "http://minio.example:9000/private/input.docx?X-Amz-Signature=abc"
+    monkeypatch.setattr(
+        formatting_mcp_server,
+        "read_remote_file",
+        lambda url, *, max_bytes: (source.read_bytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    )
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "format_document",
+            {"document": {"url": minio_url}},
+        )
+
+    output = base64.b64decode(result.data["content_base64"], validate=True)
+    assert result.data["filename"] == "input-公文格式化.docx"
+    assert output.startswith(b"PK")

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import replace
+from dataclasses import asdict, replace
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -18,10 +19,18 @@ from .prompts import (
     CANDIDATE_DECISION_SYSTEM,
     CHUNK_REVIEW_HUMAN,
     CHUNK_REVIEW_SYSTEM,
+    SCORE_REPAIR_HUMAN,
+    SCORE_REPAIR_SYSTEM,
 )
 from .reference_loader import load_university_references
 from .resume_loader import load_resume_elements, resume_source_filename
-from .schemas import BatchResumeReviewState, CandidateDecision, CandidateResume
+from .schemas import (
+    SCORE_DIMENSION_SPECS,
+    BatchResumeReviewState,
+    CandidateDecision,
+    CandidateResume,
+    ScoreDimension,
+)
 from .security import find_prompt_injections
 
 
@@ -224,6 +233,10 @@ def _decide_candidates(llm: Any | None):
             ]
         )
         chain = prompt | llm | StrOutputParser()
+        repair_prompt = ChatPromptTemplate.from_messages(
+            [("system", SCORE_REPAIR_SYSTEM), ("human", SCORE_REPAIR_HUMAN)]
+        )
+        repair_chain = repair_prompt | llm | StrOutputParser()
         decisions_by_id: dict[str, CandidateDecision] = {}
         jobs: dict[Any, CandidateResume] = {}
         with ThreadPoolExecutor(max_workers=min(8, max(1, len(candidates)))) as executor:
@@ -252,9 +265,19 @@ def _decide_candidates(llm: Any | None):
             for future in as_completed(jobs):
                 candidate = jobs[future]
                 try:
-                    decisions_by_id[candidate.candidate_id] = parse_candidate_decision(
+                    decision = parse_candidate_decision(
                         future.result(), candidate, state.get("job_description", "")
                     )
+                    if decision.status == "pending_review" and not _has_complete_scorecard(
+                        decision
+                    ):
+                        decision = _repair_incomplete_scorecard(
+                            decision,
+                            candidate,
+                            state,
+                            repair_chain,
+                        )
+                    decisions_by_id[candidate.candidate_id] = decision
                 except Exception as exc:  # Preserve other candidate results.
                     decisions_by_id[candidate.candidate_id] = _pending_decision(
                         candidate,
@@ -265,6 +288,55 @@ def _decide_candidates(llm: Any | None):
         return {**state, "decisions": decisions}
 
     return node
+
+
+def _has_complete_scorecard(decision: CandidateDecision) -> bool:
+    return (
+        decision.score is not None
+        and len(decision.score_breakdown) == len(SCORE_DIMENSION_SPECS)
+        and all(item.score is not None for item in decision.score_breakdown)
+        and sum(item.score or 0 for item in decision.score_breakdown) == decision.score
+    )
+
+
+def _repair_incomplete_scorecard(
+    decision: CandidateDecision,
+    candidate: CandidateResume,
+    state: BatchResumeReviewState,
+    repair_chain: Any,
+) -> CandidateDecision:
+    try:
+        raw = repair_chain.invoke(
+            {
+                "candidate_id": candidate.candidate_id,
+                "candidate_name": candidate.candidate_name,
+                "filename": candidate.filename,
+                "job_description": state.get("job_description", ""),
+                "decision_json": json.dumps(asdict(decision), ensure_ascii=False),
+                "chunk_findings": "\n\n".join(
+                    state.get("chunk_findings", {}).get(candidate.candidate_id, [])
+                ),
+            }
+        )
+        payload = _parse_json_object(raw)
+        breakdown, complete = _normalize_score_breakdown(
+            payload.get("score_breakdown"),
+            excluded=False,
+        )
+        if complete:
+            detail = "模型未返回完整的六维评分明细，需人工复核总分依据。"
+            return replace(
+                decision,
+                score=sum(item.score or 0 for item in breakdown),
+                score_breakdown=breakdown,
+                risks=[risk for risk in decision.risks if risk != detail],
+            )
+        reason = "评分卡修复重试仍未返回完整分项分数，暂不纳入排名。"
+    except Exception as exc:  # Preserve the original evidence and flag the failure.
+        reason = f"评分卡修复重试失败，暂不纳入排名: {exc}"
+    if reason not in decision.risks:
+        return replace(decision, risks=[*decision.risks, reason])
+    return decision
 
 
 def parse_candidate_decision(
@@ -322,11 +394,23 @@ def parse_candidate_decision(
     elif status == "excluded":
         status = "pending_review"
 
-    score = (
-        _normalize_score(payload.get("score"))
-        if status in {"qualified", "pending_review"}
-        else None
+    score_breakdown, has_complete_breakdown = _normalize_score_breakdown(
+        payload.get("score_breakdown"),
+        excluded=status == "excluded",
     )
+    if status in {"qualified", "pending_review"} and has_complete_breakdown:
+        score = sum(item.score or 0 for item in score_breakdown)
+    else:
+        score = (
+            _normalize_score(payload.get("score"))
+            if status in {"qualified", "pending_review"}
+            else None
+        )
+    if status in {"qualified", "pending_review"} and not has_complete_breakdown:
+        status = "pending_review"
+        detail = "模型未返回完整的六维评分明细，需人工复核总分依据。"
+        if detail not in risks:
+            risks.append(detail)
     if status == "qualified" and score is None:
         status = "pending_review"
     return CandidateDecision(
@@ -336,6 +420,7 @@ def parse_candidate_decision(
         status=status,
         score=score,
         summary=str(payload.get("summary") or "未提供候选人摘要。").strip(),
+        score_breakdown=score_breakdown,
         hard_requirements=hard_requirements,
         exclusion_reasons=exclusion_reasons,
         strengths=_string_list(payload.get("strengths")),
@@ -403,12 +488,17 @@ def _filter_and_rank(state: BatchResumeReviewState) -> BatchResumeReviewState:
 
 def _aggregate_report(state: BatchResumeReviewState) -> BatchResumeReviewState:
     report = render_batch_report(state)
+    html_report = render_batch_html_report(state)
     output_path = state.get("output_path")
     if output_path:
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(report, encoding="utf-8")
-    return {**state, "final_report": report}
+    return {
+        **state,
+        "final_report": report,
+        "final_html_report": html_report,
+    }
 
 
 def render_batch_report(state: BatchResumeReviewState) -> str:
@@ -506,6 +596,32 @@ def _decision_detail(decision: CandidateDecision) -> list[str]:
         f"- 得分: {decision.score if decision.score is not None else '未完成评分'}",
         f"- 摘要: {decision.summary}",
     ]
+    if decision.hard_requirements:
+        lines.extend(["", "**硬性条件与证据**"])
+        for item in decision.hard_requirements:
+            status = {"met": "满足", "not_met": "不满足", "uncertain": "待核验"}.get(
+                item["status"], item["status"]
+            )
+            lines.append(f"- {item['requirement']}：{status}。证据：{item['evidence']}")
+    if decision.score_breakdown:
+        lines.extend(
+            [
+                "",
+                "**六维评分依据**",
+                "",
+                "| 维度 | 得分 | 依据与扣分说明 |",
+                "| --- | ---: | --- |",
+            ]
+        )
+        for item in decision.score_breakdown:
+            score = "不计分" if item.score is None else f"{item.score}/{item.max_score}"
+            evidence = "；".join(item.evidence) or "未提供证据"
+            rationale = item.rationale or "未提供得分说明"
+            deductions = "；".join(item.deductions)
+            detail = f"依据：{evidence}。说明：{rationale}"
+            if deductions:
+                detail += f"。扣分/核验：{deductions}"
+            lines.append(f"| {item.label} | {score} | {_cell(detail)} |")
     sections = [
         ("筛除理由", decision.exclusion_reasons),
         ("优势", decision.strengths),
@@ -519,6 +635,111 @@ def _decision_detail(decision: CandidateDecision) -> list[str]:
             lines.extend(f"- {item}" for item in items)
     lines.append("")
     return lines
+
+
+def render_batch_html_report(state: BatchResumeReviewState) -> str:
+    """Render the already-produced decision data without loading resumes again."""
+    candidates = state.get("candidates", [])
+    ranked = state.get("ranked_candidates", [])
+    excluded = state.get("excluded_candidates", [])
+    pending = state.get("pending_candidates", [])
+    rank_by_id = {item.candidate_id: item.rank for item in ranked}
+    ranked_ids = set(rank_by_id)
+    ordered = ranked + excluded + [item for item in pending if item.candidate_id not in ranked_ids]
+    summary_rows = "".join(
+        _html_row(
+            str(item.rank),
+            item.candidate_name,
+            item.filename,
+            str(item.score),
+            "需复核" if item.status == "pending_review" else "-",
+            item.summary,
+        )
+        for item in ranked
+    ) or _html_empty_row(6, "无候选人进入排序。")
+    excluded_rows = "".join(
+        _html_row(item.candidate_name, item.filename, "；".join(item.exclusion_reasons))
+        for item in excluded
+    ) or _html_empty_row(3, "无明确筛除候选人。")
+    pending_rows = "".join(
+        _html_row(
+            item.candidate_name,
+            item.filename,
+            str(rank_by_id.get(item.candidate_id) or "未评分"),
+            "；".join(item.risks + item.gaps) or item.summary,
+        )
+        for item in pending
+    ) or _html_empty_row(4, "无附加复核项。")
+    details = "".join(_decision_html_detail(item) for item in ordered)
+    return f"""<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>批量简历审查与排序报告</title>
+<style>
+body{{margin:0;background:#f5f7fb;color:#1f2937;font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}}
+main{{max-width:1200px;margin:32px auto;padding:0 20px}} h1,h2,h3{{color:#111827;line-height:1.3}}
+section,article{{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;margin:18px 0;box-shadow:0 1px 2px #1118270d}}
+.stats{{display:flex;gap:12px;flex-wrap:wrap}} .stat{{background:#eff6ff;border-radius:8px;padding:8px 12px}}
+table{{width:100%;border-collapse:collapse;margin:12px 0;overflow:hidden}} th,td{{border:1px solid #dbe2ea;padding:9px;vertical-align:top;text-align:left}} th{{background:#eff6ff}} td.score{{white-space:nowrap;text-align:right}}
+.qualified{{color:#166534}} .pending_review{{color:#92400e}} .excluded{{color:#b91c1c}} .muted{{color:#6b7280}}
+ul{{margin:6px 0 0;padding-left:20px}} details{{margin-top:14px}} summary{{cursor:pointer;font-weight:600}} .breakdown td:last-child{{min-width:420px}}
+</style></head><body><main>
+<h1>批量简历审查与排序报告</h1>
+<section><h2>批次概况</h2><div class="stats">
+<span class="stat">输入简历：{len(candidates)} 份</span><span class="stat">参与排名：{len(ranked)} 人</span>
+<span class="stat">需复核：{sum(item.status == 'pending_review' for item in ranked)} 人</span><span class="stat">筛除：{len(excluded)} 人</span>
+<span class="stat">模式：{'dry-run（未调用模型）' if state.get('dry_run', False) else '正式审查'}</span>
+</div><p class="muted">评分卡和说明来自本次审查已生成的候选人决策；生成本页不会再次下载、读取或解析简历内容。</p></section>
+<section><h2>候选人排序</h2><table><thead><tr><th>排名</th><th>候选人</th><th>文件</th><th>得分</th><th>复核</th><th>摘要</th></tr></thead><tbody>{summary_rows}</tbody></table></section>
+<section><h2>筛除名单</h2><table><thead><tr><th>候选人</th><th>文件</th><th>筛除理由</th></tr></thead><tbody>{excluded_rows}</tbody></table></section>
+<section><h2>附加复核项</h2><table><thead><tr><th>候选人</th><th>文件</th><th>排名</th><th>复核原因或风险</th></tr></thead><tbody>{pending_rows}</tbody></table></section>
+<section><h2>候选人详报</h2>{details}</section>
+</main></body></html>"""
+
+
+def _decision_html_detail(decision: CandidateDecision) -> str:
+    status_label = {"qualified": "通过筛选", "excluded": "筛除", "pending_review": "需人工复核"}[decision.status]
+    hard_requirements = "".join(
+        f"<li>{escape(item['requirement'])}：{escape(item['status'])}。证据：{escape(item['evidence'])}</li>"
+        for item in decision.hard_requirements
+    ) or "<li>未识别到独立硬性条件。</li>"
+    breakdown = "".join(
+        _html_row(
+            item.label,
+            "不计分" if item.score is None else f"{item.score}/{item.max_score}",
+            f"简历证据：{'；'.join(item.evidence) or '未单列证据'}。"
+            f"得分说明：{item.rationale or '未提供'}。"
+            f"扣分/核验：{'；'.join(item.deductions) or '无'}",
+        )
+        for item in decision.score_breakdown
+    ) or _html_empty_row(3, "未生成评分卡。")
+    sections = "".join(
+        _html_list(title, values)
+        for title, values in (
+            ("筛除理由", decision.exclusion_reasons),
+            ("优势", decision.strengths),
+            ("差距", decision.gaps),
+            ("风险", decision.risks),
+            ("面试追问", decision.interview_questions),
+        )
+        if values
+    )
+    score = "未完成评分" if decision.score is None else str(decision.score)
+    return f"""<article><h3>{escape(decision.candidate_name)}</h3>
+<p><span class="{escape(decision.status)}">{escape(status_label)}</span> · 文件：{escape(decision.filename)} · 总分：{escape(score)}</p>
+<p>{escape(decision.summary)}</p><details open><summary>硬性条件与证据</summary><ul>{hard_requirements}</ul></details>
+<details open><summary>六维评分依据</summary><table class="breakdown"><thead><tr><th>维度</th><th>得分</th><th>依据与扣分说明</th></tr></thead><tbody>{breakdown}</tbody></table></details>{sections}</article>"""
+
+
+def _html_list(title: str, values: list[str]) -> str:
+    return f"<details><summary>{escape(title)}</summary><ul>{''.join(f'<li>{escape(value)}</li>' for value in values)}</ul></details>"
+
+
+def _html_row(*cells: str) -> str:
+    return "<tr>" + "".join(f"<td>{escape(str(cell))}</td>" for cell in cells) + "</tr>"
+
+
+def _html_empty_row(columns: int, message: str) -> str:
+    return f'<tr><td colspan="{columns}" class="muted">{escape(message)}</td></tr>'
 
 
 def _read_job_description(state: BatchResumeReviewState) -> str:
@@ -579,6 +800,53 @@ def _normalize_hard_requirements(value: Any) -> list[dict[str, str]]:
             }
         )
     return results
+
+
+def _normalize_score_breakdown(
+    value: Any,
+    *,
+    excluded: bool,
+) -> tuple[list[ScoreDimension], bool]:
+    """Normalize the fixed public scorecard and prevent un-auditable totals."""
+    items = value if isinstance(value, list) else []
+    supplied = {
+        str(item.get("id", "")).strip(): item
+        for item in items
+        if isinstance(item, dict)
+    }
+    dimensions: list[ScoreDimension] = []
+    complete = not excluded
+    for dimension_id, label, max_score in SCORE_DIMENSION_SPECS:
+        item = supplied.get(dimension_id, {})
+        raw_score = item.get("score") if isinstance(item, dict) else None
+        score = None if excluded else _normalize_dimension_score(raw_score, max_score)
+        if score is None and not excluded:
+            complete = False
+        dimensions.append(
+            ScoreDimension(
+                id=dimension_id,
+                label=label,
+                score=score,
+                max_score=max_score,
+                evidence=_string_list(item.get("evidence")) if isinstance(item, dict) else [],
+                rationale=(
+                    str(item.get("rationale") or "").strip()
+                    if isinstance(item, dict)
+                    else ""
+                ),
+                deductions=(
+                    _string_list(item.get("deductions")) if isinstance(item, dict) else []
+                ),
+            )
+        )
+    return dimensions, complete
+
+
+def _normalize_dimension_score(value: Any, max_score: int) -> int | None:
+    try:
+        return max(0, min(max_score, round(float(value))))
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_soft_skill_requirement(requirement: str) -> bool:

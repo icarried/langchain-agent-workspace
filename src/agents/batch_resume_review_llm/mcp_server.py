@@ -10,6 +10,8 @@ from typing import Any
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
+from src.agents.mcp_auth import authorize_http_mcp
+
 from .service import MAX_RESUMES, review_resumes
 
 MCP_RESUME_EXTENSIONS = {".doc", ".docx", ".md", ".pdf", ".txt"}
@@ -44,6 +46,7 @@ def review_resumes_tool(
     job_description_text: str,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    authorize_http_mcp("batch-resume-review:review")
     if not resumes:
         raise ValueError("at least one resume is required")
     if len(resumes) > MAX_RESUMES:
@@ -61,6 +64,7 @@ def review_resumes_tool(
 
     return {
         "report": result["report"],
+        "report_html": result["report_html"],
         "dry_run": result["dry_run"],
         "candidate_count": result["candidate_count"],
         "qualified_count": result["qualified_count"],

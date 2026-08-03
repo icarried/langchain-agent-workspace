@@ -4,7 +4,7 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 
 ## Metadata
 
-- Last updated: 2026-07-28
+- Last updated: 2026-08-02
 - Updated by: Codex using `$windows-wsl-dev-environment`
 - Project name: Agent Workspace
 - Project root as opened now: `E:\My_sorcode\--创建智能体工作空间--`
@@ -19,12 +19,17 @@ This file describes how this project is developed across Windows, WSL, Docker, a
 - Platform Base URL: `http://<host>:8008/v1`
 - 机器人管理平台服务器 Base URL: `http://10.100.5.23:10085/v1`；容器内网关仍监听
   `8008`，服务器通过 `10085:8008` 发布。
-- Only gateway publishes `8008:8008`; eight worker services listen on Compose-internal `8080`.
-- Models: `batch-resume-review-agent`, `tender-format-review-agent`, `smart-resume-screening-agent`, `contract-review-agent`, `official-document-review-agent`, `langchain-knowledge-base-agent`, `department-knowledge-base-agent`, `image-generation-agent`.
+- Only gateway publishes `8008:8008`; agent workers and the MCP composition service listen on Compose-internal `8080`.
+- MCP: public `http://<host>:8008/mcp` proxies to internal `mcp-gateway:8080/mcp`, which composes the department knowledge-base, batch resume review and official-document formatting backends.
+- Local agile-development authentication temporarily reuses one secret value for `AGENT_GATEWAY_API_KEY` and the `AGENT_MCP_TOKENS_JSON` entry that grants only `official-document-formatting:format`; the value remains exclusively in ignored `.env.local`. Split and rotate these credentials before multi-client or production use.
+- Official-document formatting MCP accepts Base64 or a server-reachable MinIO HTTP(S) URL. Docker workers bypass the GPU proxy for Compose-internal `department-kb-minio`; configure `AGENT_FILE_ALLOWED_HOSTS` with any external platform MinIO hostname (and port when needed).
+- 2026-08-01 WSL deployment observation: rebuilt the shared image and recreated `official-document-formatting`, `mcp-gateway`, and `gateway`; `POST http://127.0.0.1:8008/mcp` successfully initialized MCP and `tools/list` exposed `official_document_format` with URL/Base64 input.
+- Models: read the current authoritative list from `config/agent_gateway.json`; callers discover healthy models through `/v1/models`.
 - Department knowledge-base originals use the project-owned `department-kb-minio` service on
   Compose-internal `9000/9001` and named volume `department_kb_minio_data`; neither MinIO port is
   published to the host. The existing `ai-app-platform` MinIO is only an upload transport source.
 - GPU Stack Base URL is `http://10.100.5.33:8003/v1`; credentials are stored only through `GPU_STACK_API_KEY` in `.env.local`.
+- Batch resume review parses text PDF pages locally and sends only non-text PDF pages or document images to the shared GPU Stack `paddleocr-vl-1.6` provider.
 - On this workstation only, WSL reaches the intranet endpoint through its automatically loaded HTTP proxy at `127.0.0.1:7897`. The local ignored `.env` enables Compose profile `local-proxy`; service `gpu-stack-proxy-relay` exposes that loopback-only proxy only on Docker host-gateway `172.17.0.1:17897`. Server deployments must omit this profile and proxy URL and connect directly.
 - Start locally without Docker: `python -m src.agent_gateway dev --port 8008`.
 - Build/start in WSL: `DOCKER_BUILDKIT=0 docker compose build gateway` then `docker compose up -d`.
@@ -127,6 +132,8 @@ Use this section for relays, tunnels, port forwards, signed URL transport mappin
 ## Observed
 
 Use dated bullets for discoveries that may need another confirmation.
+
+- 2026-08-02: In WSL `Ubuntu`, the local Compose MCP chain was recreated after configuring the shared development token. Public `8008/mcp` negotiated MCP `2025-11-25`, exposed `official_document_format`, accepted the configured token, and rejected both a wrong token and a missing token. The gateway dependency graph also recreated other workers and the internal MinIO container without deleting named volumes.
 
 - 2026-06-30: Current project root is a Windows path and should be treated as Windows-primary.
 - 2026-06-30: `wsl.exe` exists, but no WSL distro was available from `wsl.exe -l -v` in the current Codex sandbox. This is a sandbox visibility fact, not evidence that the normal user has no WSL distro.

@@ -34,8 +34,8 @@ def formatting_max_bytes() -> int:
 
 def _output_filename(original_filename: str) -> str:
     safe_name = Path(original_filename).name
-    if not safe_name.lower().endswith(".docx"):
-        raise ValueError("公文格式化仅支持 DOCX 文件")
+    if Path(safe_name).suffix.lower() not in {".doc", ".docx"}:
+        raise ValueError("公文格式化仅支持 DOCX 或 DOC 文件")
     return f"{Path(safe_name).stem}-公文格式化.docx"
 
 

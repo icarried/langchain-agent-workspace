@@ -1,12 +1,14 @@
 # official-document-formatting
 
-确定性公文格式化智能体。第一期只执行 DOCX 格式化规则，不调用大模型，不做内容润色、
+确定性公文格式化智能体。执行 DOCX 格式化规则，不调用大模型，不做内容润色、
 删除或改写。规范依据为 `临时文件/公文格式化配置/公文格式规范.docx` 的正文要求。
 
 ## 能力
 
-- 一次接收一份 DOCX，支持本地路径、HTTP(S) URL、平台 `附件：` 和
+- 一次接收一份 DOCX 或旧版 DOC，支持本地路径、HTTP(S) URL、平台 `附件：` 和
   OpenAI content parts 的 `file_url.url`。
+- DOC 会在本次请求的临时目录中通过共享转换器转为 DOCX 后再格式化；最终结果始终为
+  DOCX，原始 DOC 不会被修改或持久化。
 - 显式设置 A4、上下左右 `3.7/3.5/2.8/2.6 cm` 页边距、`2.5 cm` 页脚、
   `560 twips` 页面网格和奇偶页动态 `－{PAGE}－` 页码。
 - 确定性识别主标题、文号、签发人、主送机关、四级标题、正文、附件说明、正式附件、
@@ -21,7 +23,7 @@
   首行设置为跨页重复表头，每条数据行设置为不跨页拆分。名称、规格、数量和金额等列按
   表头语义确定对齐方式。
 - 格式化前后校验正文段落与表格单元格内容，任何变化都会拒绝输出。
-- 支持 CLI、dry-run、OpenAI-compatible 非流式和 SSE。
+- 支持 CLI、dry-run、OpenAI-compatible 非流式和 SSE，以及统一 MCP。
 - 正式结果通过非流式 `message.file` 或流式 `delta.file` 返回 Base64 DOCX、文件名、
   MIME、字节数和 SHA-256；智能体不连接 AI 平台 MinIO。
 
@@ -29,7 +31,7 @@
 
 ```powershell
 python -m src.agents.official_document_formatting format path\to\公文.docx --dry-run
-python -m src.agents.official_document_formatting format path\to\公文.docx
+python -m src.agents.official_document_formatting format path\to\公文.doc
 python -m src.agents.official_document_formatting format path\to\公文.docx -o path\to\输出.docx
 ```
 
@@ -54,6 +56,30 @@ Stream: 开启
 
 平台自动生成的 `附件：` 列表也可以直接使用。生产启用网关鉴权时发送
 `Authorization: Bearer <AGENT_GATEWAY_API_KEY>`。
+
+## 统一 MCP
+
+MCP客户端统一连接 `http://<host>:8008/mcp`，tool 名称为
+`official_document_format`。`document` 采用以下两种方式之一传入一份 DOCX 或 DOC：
+
+```json
+{"filename":"通知.docx","content_base64":"<base64>"}
+```
+
+```json
+{"url":"http://minio:9000/private/通知.docx?X-Amz-Signature=..."}
+```
+
+URL 必须是服务端可访问的 HTTP(S) 地址；可传 MinIO 预签名 URL，系统会保留完整查询
+参数。URL 路径不含 `.doc` / `.docx` 时，请额外传入 `filename`。`dry_run=true` 只返回报告，
+正式调用同时返回格式化文件的 `content_base64`、SHA-256、大小和 MIME。Bearer token必须具有
+`official-document-formatting:format` 权限。
+
+本机单智能体 stdio 调试可运行：
+
+```powershell
+python -m src.agents.official_document_formatting.mcp_server
+```
 
 ## 文件输出协议
 
@@ -103,10 +129,11 @@ AI 平台负责解码、DOCX 安全校验、MinIO 持久化、`file_mapping` 和
 
 ## 配置与边界
 
-- `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES`：输入 DOCX 上限，默认 20 MiB。
+- `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES`：输入 DOCX 或 DOC 上限，默认 20 MiB。
 - 远程附件继续使用共享的 `AGENT_FILE_ALLOWED_HOSTS`、`AGENT_FILE_MAX_BYTES`、
   `AGENT_FILE_TIMEOUT_SECONDS` 和 `AGENT_FILE_TRANSPORT_OVERRIDES`。
-- 当前只支持 DOCX，不接受 DOC、PDF、Markdown 或多文件批处理。
+- 支持 DOCX 与旧版 DOC；输出固定为 DOCX，不接受 PDF、Markdown 或多文件批处理。DOC
+  转换需要 LibreOffice，或 Windows 上安装 Microsoft Word 与 pywin32。
 - 不删除日期、重复段落或空段落，不改写正文与表格内容；仅允许将 `附件：首项` 拆成
   标签和首项两个段落，并清理附件项目行首的手工布局空白。
 - `公文格式规范.docx` 正文是规则权威来源；其内部文档属性与正文冲突时采用正文值，

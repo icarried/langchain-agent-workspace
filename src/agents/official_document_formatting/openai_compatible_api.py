@@ -21,6 +21,7 @@ from src.agents.openai_compatible_inputs import (
 )
 from src.agents.remote_files import is_http_url, materialize_sources, remote_filename
 
+from .mcp_server import mcp
 from .service import format_official_document
 
 MODEL_ID = "official-document-formatting-agent"
@@ -39,11 +40,14 @@ class ParsedFormattingRequest(BaseModel):
     dry_run: bool = False
 
 
+mcp_http_app = mcp.http_app(path="/", stateless_http=True)
 app = FastAPI(
     title="Official Document Formatting OpenAI-compatible API",
     version="0.1.0",
-    description="Deterministic company-approved DOCX formatting worker.",
+    description="Deterministic company-approved DOCX and legacy DOC formatting worker.",
+    lifespan=mcp_http_app.lifespan,
 )
+app.mount("/mcp", mcp_http_app)
 
 
 @app.get("/health")
@@ -116,7 +120,7 @@ def parse_document_request(
     if not document_paths:
         return None
     if len(document_paths) != 1:
-        raise ValueError("公文格式化一次只能处理一份 DOCX 文件")
+        raise ValueError("公文格式化一次只能处理一份 DOCX 或 DOC 文件")
     return ParsedFormattingRequest(
         document_path=document_paths[0],
         dry_run=request.dry_run,
@@ -228,7 +232,7 @@ def _run_format(formatting_request: ParsedFormattingRequest) -> dict[str, Any]:
     )
     with materialize_sources(
         [source],
-        allowed_suffixes={".docx"},
+        allowed_suffixes={".doc", ".docx"},
         prefix="official-document-formatting-input-",
     ) as paths:
         return format_official_document(
@@ -331,7 +335,7 @@ def _sse_done(completion_id: str, created: int, model: str) -> str:
 def _readiness_message() -> str:
     return (
         "official-document-formatting-agent 已就绪。\n\n"
-        "请上传一份 DOCX，并使用以下格式：\n\n"
+        "请上传一份 DOCX 或旧版 DOC，并使用以下格式：\n\n"
         "公文文件：\n<公文 DOCX 文件链接或服务端路径>\n\n"
-        "该智能体只执行公司标准格式化，不润色或改写正文。"
+        "旧版 DOC 会临时转换为 DOCX；该智能体只执行公司标准格式化，不润色或改写正文。"
     )

@@ -4,6 +4,29 @@ from dataclasses import dataclass, field
 from typing import NotRequired, TypedDict
 
 
+SCORE_DIMENSION_SPECS: tuple[tuple[str, str, int], ...] = (
+    ("education_major_foundation", "学历、院校、专业与基础知识", 20),
+    ("relevant_experience", "相关工作或实习经验", 25),
+    ("project_achievement", "项目与成果质量", 25),
+    ("skills_tools", "技能与工具匹配", 15),
+    ("evidence_credibility", "证据质量与可信度", 10),
+    ("collaboration_documentation", "沟通协作与文档", 5),
+)
+
+
+@dataclass(frozen=True)
+class ScoreDimension:
+    """A user-facing, evidence-backed score rather than hidden model reasoning."""
+
+    id: str
+    label: str
+    score: int | None
+    max_score: int
+    evidence: list[str] = field(default_factory=list)
+    rationale: str = ""
+    deductions: list[str] = field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class ResumeElement:
     index: int
@@ -42,6 +65,7 @@ class CandidateDecision:
     status: str
     score: int | None
     summary: str
+    score_breakdown: list[ScoreDimension] = field(default_factory=list)
     hard_requirements: list[dict[str, str]] = field(default_factory=list)
     exclusion_reasons: list[str] = field(default_factory=list)
     strengths: list[str] = field(default_factory=list)
@@ -70,3 +94,4 @@ class BatchResumeReviewState(TypedDict):
     excluded_candidates: NotRequired[list[CandidateDecision]]
     pending_candidates: NotRequired[list[CandidateDecision]]
     final_report: NotRequired[str]
+    final_html_report: NotRequired[str]

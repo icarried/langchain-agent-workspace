@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import base64
 from pathlib import Path
 
+import pytest
+import fitz
+from fastmcp import Client
 from fastapi.testclient import TestClient
 
 from src.agents.batch_resume_review_llm.openai_compatible_api import (
@@ -12,6 +16,14 @@ from src.agents.batch_resume_review_llm.openai_compatible_api import (
     app,
     parse_review_request,
 )
+from src.agents.batch_resume_review_llm.mcp_server import mcp
+from src.agents.batch_resume_review_llm.graph import (
+    parse_candidate_decision,
+    partition_and_rank,
+    render_batch_html_report,
+    render_batch_report,
+)
+from src.agents.batch_resume_review_llm.schemas import CandidateResume
 
 
 def _write_resume(path: Path, text: str) -> Path:
@@ -310,3 +322,161 @@ def test_chat_completions_stream_dry_run(tmp_path: Path) -> None:
     assert any(
         json.loads(chunk)["object"] == "chat.completion.chunk" for chunk in chunks
     )
+
+
+@pytest.mark.asyncio
+async def test_mcp_batch_resume_dry_run_reuses_service() -> None:
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "review_resumes",
+            {
+                "resumes": [
+                    {
+                        "filename": "candidate.txt",
+                        "content_base64": base64.b64encode(
+                            "姓名：张三\n本科\nPython\n".encode()
+                        ).decode(),
+                    }
+                ],
+                "job_description_text": "要求本科，熟悉 Python。",
+                "dry_run": True,
+            },
+        )
+
+    assert result.data["candidate_count"] == 1
+    assert result.data["dry_run"] is True
+    assert "批量简历审查与排序报告" in result.data["report"]
+    assert result.data["report_html"].startswith("<!doctype html>")
+
+
+@pytest.mark.asyncio
+async def test_mcp_batch_resume_accepts_text_pdf_without_ocr(monkeypatch) -> None:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text(
+        (72, 72),
+        "Name: Alice\nEducation: Bachelor\nSkills: Python and LangChain",
+    )
+    pdf_bytes = document.tobytes()
+    document.close()
+    monkeypatch.setattr(
+        "src.agents.batch_resume_review_llm.resume_loader.ocr_image_bytes",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("text PDF must not invoke OCR")
+        ),
+    )
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "review_resumes",
+            {
+                "resumes": [
+                    {
+                        "filename": "candidate.pdf",
+                        "content_base64": base64.b64encode(pdf_bytes).decode(),
+                    }
+                ],
+                "job_description_text": "Bachelor degree and Python are required.",
+                "dry_run": True,
+            },
+        )
+
+    assert result.data["candidate_count"] == 1
+    assert result.data["filenames"] == ["candidate.pdf"]
+
+
+def test_candidate_score_breakdown_is_complete_and_reported() -> None:
+    candidate = CandidateResume(
+        candidate_id="candidate-001",
+        filename="candidate.md",
+        path="candidate.md",
+        candidate_name="张三",
+    )
+    raw = json.dumps(
+        {
+            "candidate_name": "张三",
+            "status": "qualified",
+            "score": 1,
+            "summary": "具备相关项目经验。",
+            "score_breakdown": [
+                {
+                    "id": "education_major_foundation",
+                    "score": 18,
+                    "evidence": ["计算机科学本科"],
+                    "rationale": "专业相关且基础课程完整。",
+                    "deductions": ["未提供排名"],
+                },
+                {
+                    "id": "relevant_experience",
+                    "score": 21,
+                    "evidence": ["两年 AI 工程实习"],
+                    "rationale": "有直接相关经验。",
+                    "deductions": [],
+                },
+                {
+                    "id": "project_achievement",
+                    "score": 22,
+                    "evidence": ["RAG 项目上线"],
+                    "rationale": "具备可验证交付。",
+                    "deductions": ["量化指标有限"],
+                },
+                {
+                    "id": "skills_tools",
+                    "score": 13,
+                    "evidence": ["Python、PyTorch"],
+                    "rationale": "核心工具匹配。",
+                    "deductions": ["未说明边缘部署"],
+                },
+                {
+                    "id": "evidence_credibility",
+                    "score": 5,
+                    "evidence": ["工作与项目描述一致"],
+                    "rationale": "主要经历可追问。",
+                    "deductions": ["缺少成果基线"],
+                },
+                {
+                    "id": "collaboration_documentation",
+                    "score": 3,
+                    "evidence": ["参与接口联调"],
+                    "rationale": "有协作证据。",
+                    "deductions": ["未说明文档产出"],
+                },
+            ],
+            "hard_requirements": [],
+            "exclusion_reasons": [],
+            "strengths": [],
+            "gaps": [],
+            "risks": [],
+            "interview_questions": [],
+        },
+        ensure_ascii=False,
+    )
+
+    decision = parse_candidate_decision(raw, candidate, "要求本科及以上学历。")
+    ranked, excluded, pending = partition_and_rank([decision])
+    report = render_batch_report(
+        {
+            "candidates": [candidate],
+            "ranked_candidates": ranked,
+            "excluded_candidates": excluded,
+            "pending_candidates": pending,
+        }
+    )
+    report_html = render_batch_html_report(
+        {
+            "candidates": [candidate],
+            "ranked_candidates": ranked,
+            "excluded_candidates": excluded,
+            "pending_candidates": pending,
+        }
+    )
+
+    assert decision.score == 82
+    assert [item.score for item in decision.score_breakdown] == [18, 21, 22, 13, 5, 3]
+    assert "六维评分依据" in report
+    assert "学历、院校、专业与基础知识 | 18/20" in report
+    assert "相关工作或实习经验 | 21/25" in report
+    assert "证据质量与可信度 | 5/10" in report
+    assert report_html.startswith("<!doctype html>")
+    assert "六维评分依据" in report_html
+    assert "18/20" in report_html

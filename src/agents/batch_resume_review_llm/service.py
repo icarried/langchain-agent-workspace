@@ -68,6 +68,7 @@ def review_resumes(
     decisions = state.get("decisions", [])
     return {
         "report": state["final_report"],
+        "report_html": state["final_html_report"],
         "output_path": str(resolved_output) if resolved_output else "",
         "resume_paths": [safe_resume_source_label(source) for source in sources],
         "provider": provider,

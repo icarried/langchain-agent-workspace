@@ -13,7 +13,7 @@
 ## 统一部署入口
 
 - OpenAI-compatible 生产入口统一为 `http://<host>:8008/v1`，模型由请求体 `model` 选择。
-- MCP生产入口统一为 `http://<host>:8008/mcp`；首期只代理部门知识库只读 MCP。
+- MCP生产入口统一为 `http://<host>:8008/mcp`；内部 `mcp-gateway` 聚合独立 worker，当前公开部门知识库只读、批量简历审查和公文格式化工具。
 - `GET /v1/models` 只列出健康 worker。Compose 中每个 worker 独立监听内部 `8080`，不发布宿主机端口。
 - 其他历史独立 REST、MCP 和 OpenAI-compatible端口仅保留源码用于单智能体调试，不进入生产 Compose。
 - 部署、鉴权、附件和知识库说明见 `docs/development/AGENT_GATEWAY.md`。
@@ -26,7 +26,7 @@
 - 用途: 八部门及“公司规定”共享入口、严格空间隔离的 RAG智能体；Qwen3.5识别保存/问答/列表/帮助意图，PaddleOCR-VL-1.6处理扫描文件。
 - 源码路径: `src/agents/department_knowledge_base/`
 - OpenAI-compatible入口: 统一网关 `http://<host>:8008/v1`，模型 ID `department-knowledge-base-agent`；顶层扩展字段 `knowledge_id` 固定部门空间。
-- MCP入口: `http://<host>:8008/mcp`；只读工具为 `department_kb_list_spaces`、`department_kb_query`、`department_kb_get_import_status`。工具不接受 `knowledge_id`，Bearer token在 `DEPARTMENT_KB_MCP_TOKENS_JSON` 中固定绑定一个空间。
+- MCP入口: `http://<host>:8008/mcp`；只读工具为 `department_kb_list_spaces`、`department_kb_query`、`department_kb_get_import_status`。工具不接受 `knowledge_id`，Bearer token优先在 `AGENT_MCP_TOKENS_JSON` 中固定绑定一个空间，旧 `DEPARTMENT_KB_MCP_TOKENS_JSON` 仅作兼容。
 - 数据隔离: namespace `department-knowledge-base-agent` 下九个独立 Chroma目录；专属 MinIO中九个独立 `department-kb-<knowledge_id>` bucket。
 - 对象存储: `ai-app-platform` MinIO只做上传入口；项目 Compose内 `department-kb-minio:9000` 保存长期原件且不发布宿主机端口。
 - 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`、`DEPARTMENT_KB_MINIO_ACCESS_KEY`、`DEPARTMENT_KB_MINIO_SECRET_KEY`、`DEPARTMENT_KB_MCP_TOKENS_JSON`及可选 `DEPARTMENT_KB_*` 覆盖变量。
@@ -102,14 +102,15 @@
 - 用途: 按公司公文标准确定性格式化单份 DOCX，处理 A4 页面网格、奇偶页码、四级标题、
   附件、落款日期、正式附件、版记和三线表，不调用大模型，不做内容润色或内容删除。
 - 源码路径: `src/agents/official_document_formatting/`
-- 运行入口: `python -m src.agents.official_document_formatting format <document.docx> [--output <formatted.docx>] [--dry-run]`
+- 运行入口: `python -m src.agents.official_document_formatting format <document.docx|document.doc> [--output <formatted.docx>] [--dry-run]`
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `official-document-formatting-agent`。
+- MCP 入口: 统一网关 `http://<host>:8008/mcp`，tool 名称 `official_document_format`；单智能体 stdio 调试仍可运行 `python -m src.agents.official_document_formatting.mcp_server`。
 - 输入: 本地/挂载 DOCX、HTTP(S) URL、平台 `附件：` 或 `file_url.url`；一次只处理一份文件。
 - 输出: 非流式 `message.file` 或 SSE `delta.file`，包含 Base64 DOCX、文件名、MIME、大小和 SHA-256，由 AI 平台负责安全校验和持久化。
 - 合规报告: 静态验证页面、网格、页码和内容不变；分页、标题回行、表格跨页、印章位置和
   版记偶数页要求在没有渲染器时标记为 `verified=false`。
 - 环境变量: 可选 `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES`；远程附件复用 `AGENT_FILE_*`。
-- 关联任务: T-045、T-046、T-047、T-048、T-049
+- 关联任务: T-045、T-046、T-047、T-048、T-049、T-056
 - 备注: 服务端只写入 DOCX 字体名称，不安装或探测公文字体；字体由打开文件的用户端提供。
   规范正文优先于规范样例内部不一致的文档属性；格式化完成不等于视觉分页已经通过。
 
@@ -147,12 +148,13 @@
 - 源码路径: `src/agents/batch_resume_review_llm/`
 - 运行入口: `python -m src.agents.batch_resume_review_llm review <resume-a> <resume-b> --job-description <jd.txt> --output <report.md>`
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `batch-resume-review-agent`。
-- MCP 入口: stdio `python -m src.agents.batch_resume_review_llm.mcp_server`；HTTP `python -m src.agents.batch_resume_review_llm.mcp_server --transport http --host 127.0.0.1 --port 8005 --path /mcp`；tool 名称 `review_resumes`。
+- MCP 入口: 生产统一为 `http://<host>:8008/mcp`，tool 名称 `batch_resume_review`；单智能体 stdio/HTTP 调试入口仍使用原 `mcp_server`，原始 tool 名称 `review_resumes`。
 - API 入口: `uvicorn src.agents.batch_resume_review_llm.api:app --reload --port 8006`，主接口 `POST /review`。
 - 调试方式: 先用 `/v1/chat/completions` 的 `dry_run=true` 验证 Dify/FastGPT 模型接入和流式输出，再接入正式模型。
-- 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`；扫描件 OCR 另用 `DASHSCOPE_API_KEY`。
-- 关联任务: T-024
-- 备注: OpenAI-compatible 入口可从“简历文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` / `image_url.url` 读取文件链接；旧包名不再提供。
+- PDF/OCR: 文本型 PDF直接解析；无有效文本的页面和图片型 DOCX调用共享 `src/document_ocr/`，默认模型 `paddleocr-vl-1.6`。
+- 需要的环境变量: `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL`；可选 `BATCH_RESUME_REVIEW_OCR_*` 覆盖变量。
+- 关联任务: T-024、T-056、T-057、T-058
+- 备注: 正式报告及 MCP返回均提供六维可审计评分卡（得分、分值上限、简历证据、得分与扣分说明），六项合计固定等于总分；不暴露模型隐藏思维链。OpenAI-compatible 入口可从“简历文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` / `image_url.url` 读取文件链接；旧包名不再提供。
 
 ### resume-review
 

@@ -8,7 +8,11 @@ OpenAI-compatible 智能体统一通过 `8008` 网关部署和接入，不再公
 python -m src.agent_gateway dev --port 8008
 ```
 
-FastGPT/Dify 使用 `http://<host>:8008/v1`，通过模型 ID 选择智能体。Docker Compose、模型列表、鉴权、远程附件、故障隔离和新知识库管理详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。后文中的独立 API/MCP 命令仅用于单智能体调试，不是生产部署入口。
+FastGPT/Dify 使用 `http://<host>:8008/v1`，通过模型 ID 选择智能体。MCP客户端统一使用
+`http://<host>:8008/mcp`，当前可发现 `department_kb_*`、`batch_resume_review` 和
+`official_document_format`（支持 DOCX、DOC，结果为 DOCX）；不要配置 worker内部端口。Docker Compose、模型列表、鉴权、
+远程附件、故障隔离和 MCP聚合详见 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)。后文中的独立
+API/MCP命令仅用于单智能体调试，不是生产部署入口。
 
 ## 激活环境
 
@@ -585,7 +589,9 @@ src/agents/official_document_review/examples/示例通知.md
 ## 公文格式化智能体
 
 `official-document-formatting-agent` 直接在 DOCX 上执行确定性公文格式规则，不调用模型。
-输出前会校验正文段落和表格单元格内容未发生变化。规则以
+它也接受旧版 DOC：请求期间先通过共享转换器转换为临时 DOCX，再执行完全相同的规则，
+最终文件始终为 DOCX；原始 DOC 不会被覆盖。DOC 转换需要 LibreOffice，或 Windows 上的
+Microsoft Word 与 pywin32。输出前会校验正文段落和表格单元格内容未发生变化。规则以
 `临时文件/公文格式化配置/公文格式规范.docx` 正文为准，不继承该样例内部与正文冲突的
 右边距和文档网格属性。
 
@@ -593,6 +599,7 @@ src/agents/official_document_review/examples/示例通知.md
 
 ```powershell
 python -m src.agents.official_document_formatting format path\to\公文.docx --dry-run
+python -m src.agents.official_document_formatting format path\to\公文.doc --dry-run
 ```
 
 生成新 DOCX：
@@ -781,7 +788,9 @@ python -m src.agents.batch_resume_review_llm review `
   --dry-run
 ```
 
-正式调用时去掉 `--dry-run`，可用 `--provider` 和 `--model` 覆盖服务端默认模型。提示词注入和明确不满足学历等硬条件者输出筛除理由且不参与排名；证据不足、学制或时间线待核验者仍参与 0-100 分排序，并在“附加复核项”中重复显示。技能熟练程度只影响分数，不作为硬筛。
+正式调用时去掉 `--dry-run`，可用 `--provider` 和 `--model` 覆盖服务端默认模型。提示词注入和明确不满足学历等硬条件者输出筛除理由且不参与排名；证据不足、学制或时间线待核验者仍参与 0-100 分排序，并在“附加复核项”中重复显示。技能熟练程度只影响分数，不作为硬筛。每位正式审查候选人还会输出六维评分卡：学历/专业基础（20）、相关工作或实习（25）、项目与成果（25）、技能与工具（15）、证据可信度（10）、沟通协作与文档（5）；逐项显示简历证据、得分说明和扣分/核验项，六项总和等于候选人总分。
+
+MCP 响应的 `report_html` 是同一份决策数据的 HTML 视图，可直接在支持安全 HTML 的前端预览。渲染阶段只消费已经生成的候选人结果，不会再次下载、读取或嵌入原始简历。
 
 启动 API：
 
@@ -813,7 +822,11 @@ MCP tool `review_resumes` 接收多份实际简历和一份岗位要求文本：
 }
 ```
 
-CLI、API 与 MCP 均接受 PDF、DOC、DOCX、MD、TXT。文本型文件优先本地解析；扫描 PDF 页面和图片型 Word 文件使用 `DASHSCOPE_API_KEY` 调用百炼 `qwen3.5-ocr`。旧 DOC 需要 Microsoft Word + pywin32（Windows）或 LibreOffice 转换。`--dry-run` 不调用筛选模型，但扫描件解析仍会调用 OCR。
+CLI、API、OpenAI-compatible 与统一 MCP 均接受 PDF、DOC、DOCX、MD、TXT。文本型 PDF
+逐页本地解析；只有无有效文字的 PDF页和图片型 Word才渲染并调用工作区共享
+`GPUStackPaddleOCRVL`，默认使用 `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL` 和
+`paddleocr-vl-1.6`。旧 DOC需要 Microsoft Word + pywin32（Windows）或 LibreOffice转换。
+`--dry-run` 不调用筛选模型，但扫描件解析仍会调用 OCR。
 
 独立打包并交付：
 

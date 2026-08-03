@@ -84,16 +84,22 @@ GPU_STACK_CONTAINER_PROXY_URL=
 DEPARTMENT_KB_MINIO_ACCESS_KEY=<项目独立随机账号>
 DEPARTMENT_KB_MINIO_SECRET_KEY=<项目独立强密码>
 DEPARTMENT_KB_OBJECT_STORE_ENABLED=true
-DEPARTMENT_KB_MCP_TOKENS_JSON=<每个随机 token 固定绑定一个 knowledge_id 的 JSON 映射>
+AGENT_MCP_TOKENS_JSON=<MCP token、工具权限和可选 knowledge_id 的 JSON 映射>
+# 旧部门专用 token 映射仅用于兼容，新增 token 保持为空。
+DEPARTMENT_KB_MCP_TOKENS_JSON=
 # 仅浏览器 MCP 客户端需要；普通桌面/服务端 MCP 客户端保持为空。
 AGENT_MCP_ALLOWED_ORIGINS=
+# 公文格式化等文件型 MCP 从 MinIO URL 下载时的主机白名单；按实际平台域名填写。
+AGENT_FILE_ALLOWED_HOSTS=<platform-minio-hostname-or-hostname:port>
 COMFYUI_I2V_BASE_URL=http://10.180.26.16:8188
 COMFYUI_I2V_PUBLIC_BASE_URL=http://10.180.26.16:8188
 ```
 
-`DEPARTMENT_KB_MCP_TOKENS_JSON` 中每个 token只能绑定一个 `knowledge_id`，推荐九个知识
-空间分别生成独立 token。不要把 token写入 release目录、Git、共享文档或命令输出日志。
-轮换某个部门时只替换该 token并重建 `department-knowledge-base` worker；其他部门不受影响。
+`AGENT_MCP_TOKENS_JSON` 中按客户端授予最小工具权限；使用部门知识库工具时每个 token
+只能绑定一个 `knowledge_id`。需要同时使用批量简历和公文格式化时，可在同一个 token的
+permissions中加入 `batch-resume-review:review` 和
+`official-document-formatting:format`。不要把 token写入 release目录、Git、共享文档或
+命令输出日志；轮换后重建使用 `.env.local` 的 `mcp-gateway` 和相关 worker。
 
 知识库 chat/embedding key 可与 GPU Stack key 使用同一凭证，但仍通过
 `KB_OPENAI_API_KEY` 和 `KB_EMBEDDING_API_KEY` 分别注入。不要复用

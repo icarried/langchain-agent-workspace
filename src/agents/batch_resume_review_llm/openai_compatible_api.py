@@ -24,6 +24,7 @@ from src.agents.openai_compatible_inputs import (
 )
 
 from .api import BatchResumeReviewRequest, review
+from .mcp_server import mcp
 
 MODEL_ID = "batch-resume-review-agent"
 
@@ -36,11 +37,14 @@ class ChatCompletionRequest(OpenAIChatCompletionRequest):
     model: str = MODEL_ID
 
 
+mcp_http_app = mcp.http_app(path="/", stateless_http=True)
 app = FastAPI(
     title="Batch Resume Review OpenAI-compatible API",
     version="0.1.0",
     description="OpenAI-compatible streaming adapter for Dify/FastGPT LLM nodes.",
+    lifespan=mcp_http_app.lifespan,
 )
+app.mount("/mcp", mcp_http_app)
 
 
 @app.get("/health")

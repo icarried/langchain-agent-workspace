@@ -8,6 +8,7 @@ dist
 tmp
 **/__pycache__
 **/.pytest_cache
+pytest-of-Lenovo
 **/.ruff_cache
 **/*.pyc
 src/agents/langchain_knowledge_base/data

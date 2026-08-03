@@ -9,7 +9,7 @@ x-worker: &worker
     HTTP_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     HTTPS_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
     ALL_PROXY: ${GPU_STACK_CONTAINER_PROXY_URL:-}
-    NO_PROXY: localhost,127.0.0.1,::1,gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,official-document-formatting,langchain-knowledge-base,department-knowledge-base,image-generation,comfyui-video-generation,comfyui-image-to-video,172.16.0.0/12,10.71.0.0/16
+    NO_PROXY: localhost,127.0.0.1,::1,gateway,mcp-gateway,batch-resume-review,tender-format-review,smart-resume-screening,contract-review,official-document-review,official-document-formatting,langchain-knowledge-base,department-knowledge-base,department-kb-minio,image-generation,comfyui-video-generation,comfyui-image-to-video,172.16.0.0/12,10.71.0.0/16
   extra_hosts:
     - "host.docker.internal:host-gateway"
   expose:
@@ -95,6 +95,8 @@ services:
       - "${AGENT_GATEWAY_PORT:-8008}:8008"
     restart: unless-stopped
     depends_on:
+      mcp-gateway:
+        condition: service_healthy
       batch-resume-review:
         condition: service_healthy
       tender-format-review:
@@ -116,6 +118,17 @@ services:
       comfyui-video-generation:
         condition: service_healthy
       comfyui-image-to-video:
+        condition: service_healthy
+
+  mcp-gateway:
+    <<: *worker
+    command: ["python", "-m", "uvicorn", "src.mcp_gateway.app:app", "--host", "0.0.0.0", "--port", "8080"]
+    depends_on:
+      batch-resume-review:
+        condition: service_healthy
+      official-document-formatting:
+        condition: service_healthy
+      department-knowledge-base:
         condition: service_healthy
 
   batch-resume-review:

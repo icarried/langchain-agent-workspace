@@ -1,11 +1,32 @@
 {
   "mcp_servers": [
     {
-      "id": "department-knowledge-base",
-      "model_id": "department-knowledge-base-agent",
-      "upstream": "http://department-knowledge-base:8080/mcp",
-      "health_upstream": "http://department-knowledge-base:8080",
+      "id": "workspace-mcp-gateway",
+      "upstream": "http://mcp-gateway:8080/mcp",
+      "health_upstream": "http://mcp-gateway:8080",
       "default": true
+    }
+  ],
+  "mcp_backends": [
+    {
+      "id": "department-knowledge-base",
+      "upstream": "http://department-knowledge-base:8080/mcp"
+    },
+    {
+      "id": "batch-resume-review",
+      "upstream": "http://batch-resume-review:8080/mcp",
+      "prefix": "batch_resume",
+      "tool_names": {
+        "review_resumes": "review"
+      }
+    },
+    {
+      "id": "official-document-formatting",
+      "upstream": "http://official-document-formatting:8080/mcp",
+      "prefix": "official_document",
+      "tool_names": {
+        "format_document": "format"
+      }
     }
   ],
   "models": [

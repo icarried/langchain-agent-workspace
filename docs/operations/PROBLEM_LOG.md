@@ -153,3 +153,10 @@
 - 已尝试: 已将 `.env.local` 规整为 `变量名=真实token` 的一行格式；已在 `llm.py` 增加提前校验，避免深层 traceback。
 - 结论: 格式修复后 DeepSeek 正式审查命令已成功生成报告。
 - 关联任务: T-009
+# 2026-08-02 - 远端统一 MCP 发布版本落后于本机
+
+- 状态: Open
+- 现象: 服务器 `10085/mcp` 可以初始化，但 `official_document_format` 调用返回工具错误。
+- 根因: 服务器运行镜像 `agent-workspace:git-b6e3741751d7` 的 `config/agent_gateway.json` 只登记旧的 `department-knowledge-base` MCP，`mcp_backends` 为空；服务器当前 Compose 也没有 `mcp-gateway` service。公文 worker 的共享 token 映射已配置且容器内 token/权限匹配，但旧网关无法发现或路由公文格式化工具。
+- 处理: 本机 `8008/mcp` 已完成正确、错误和缺失 token 的端到端验证；远端已安全写入同 token 的 `AGENT_MCP_TOKENS_JSON` 并只重建公文 worker。待将当前统一 MCP、DOC/DOCX 和 URL 支持变更整理为可复盘提交/release 后，再按服务器发布流程升级并验证 `tools/list`。
+- 注意: 不要直接把当前包含大量未提交修改的工作树覆盖发布到服务器。

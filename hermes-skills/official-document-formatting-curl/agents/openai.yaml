@@ -1,0 +1,4 @@
+interface:
+  display_name: "Official Document Formatting (curl)"
+  short_description: "Format DOC/DOCX URLs with curl and validate output"
+  default_prompt: "Use $official-document-formatting-curl to format a server-reachable DOC/DOCX URL and return the validated file."

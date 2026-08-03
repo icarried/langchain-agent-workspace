@@ -81,6 +81,39 @@ def test_mcp_tools_bind_department_at_connection_configuration(
     }
 
 
+def test_mcp_accepts_unified_token_scope(monkeypatch) -> None:
+    monkeypatch.delenv("DEPARTMENT_KB_MCP_TOKENS_JSON", raising=False)
+    monkeypatch.setenv(
+        "AGENT_MCP_TOKENS_JSON",
+        json.dumps(
+            {
+                TOKEN: {
+                    "knowledge_id": "marketing",
+                    "permissions": ["department-kb:list"],
+                }
+            }
+        ),
+    )
+    with TestClient(api.app) as client:
+        response = client.post(
+            "/mcp",
+            headers=HEADERS,
+            json=_request(
+                "tools/call",
+                request_id=1,
+                params={
+                    "name": "department_kb_list_spaces",
+                    "arguments": {},
+                },
+            ),
+        )
+
+    assert _payload(response)["result"]["structuredContent"]["knowledge_space"] == {
+        "knowledge_id": "marketing",
+        "display_name": "市场营销部",
+    }
+
+
 def test_mcp_rejects_missing_token(monkeypatch) -> None:
     monkeypatch.setenv(
         "DEPARTMENT_KB_MCP_TOKENS_JSON",

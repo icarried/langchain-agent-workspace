@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
-import os
-import secrets
 from dataclasses import dataclass
 from typing import Any
 
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_request
+
+from src.agents.mcp_auth import TOKEN_SCOPES_ENV as GLOBAL_TOKEN_SCOPES_ENV
+from src.agents.mcp_auth import request_bearer_token, token_scope
 
 from .departments import DEPARTMENTS, get_department
 from .service import DepartmentKnowledgeBaseAgent
@@ -38,7 +37,7 @@ def build_mcp_server(agent: DepartmentKnowledgeBaseAgent) -> FastMCP:
         description="List only the department knowledge spaces authorized for this token.",
     )
     def list_spaces() -> dict[str, Any]:
-        scope = _request_scope("kb:list")
+        scope = _request_scope("department-kb:list", "kb:list")
         item = get_department(scope.knowledge_id)
         return {
             "knowledge_space": {
@@ -58,7 +57,7 @@ def build_mcp_server(agent: DepartmentKnowledgeBaseAgent) -> FastMCP:
         question: str,
         top_k: int | None = None,
     ) -> dict[str, Any]:
-        scope = _request_scope("kb:query")
+        scope = _request_scope("department-kb:query", "kb:query")
         if not question.strip():
             raise ValueError("question must not be empty")
         if top_k is not None and not 1 <= top_k <= 20:
@@ -86,7 +85,7 @@ def build_mcp_server(agent: DepartmentKnowledgeBaseAgent) -> FastMCP:
     def import_status(
         task_id: str | None = None,
     ) -> dict[str, Any]:
-        scope = _request_scope("kb:import-status")
+        scope = _request_scope("department-kb:import-status", "kb:import-status")
         text = task_id.strip() if task_id else ""
         result = agent.runtime.import_status(get_department(scope.knowledge_id), text)
         return {
@@ -100,46 +99,25 @@ def build_mcp_server(agent: DepartmentKnowledgeBaseAgent) -> FastMCP:
     return server
 
 
-def _request_scope(permission: str) -> McpScope:
-    request = get_http_request()
-    authorization = request.headers.get("authorization", "")
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        raise PermissionError("MCP bearer token is required")
-    scope = _scope_for_token(token)
-    if scope is None or permission not in scope.permissions:
+def _request_scope(permission: str, legacy_permission: str) -> McpScope:
+    token = request_bearer_token()
+    scope = _scope_for_token(token, GLOBAL_TOKEN_SCOPES_ENV)
+    if scope is not None and permission in scope.permissions:
+        return scope
+    scope = _scope_for_token(token, TOKEN_SCOPES_ENV)
+    if scope is None or legacy_permission not in scope.permissions:
         raise PermissionError("MCP token is not authorized")
     return scope
 
 
-def _scope_for_token(token: str) -> McpScope | None:
-    raw = os.getenv(TOKEN_SCOPES_ENV, "").strip()
-    if not raw:
-        return None
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"{TOKEN_SCOPES_ENV} must be valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"{TOKEN_SCOPES_ENV} must be a JSON object")
-    selected: Any = None
-    for configured_token, value in payload.items():
-        if isinstance(configured_token, str) and secrets.compare_digest(
-            configured_token,
-            token,
-        ):
-            selected = value
-            break
+def _scope_for_token(token: str, env_name: str = TOKEN_SCOPES_ENV) -> McpScope | None:
+    selected = token_scope(token, env_name=env_name)
     if selected is None:
         return None
-    if not isinstance(selected, dict):
-        raise RuntimeError(f"{TOKEN_SCOPES_ENV} token entries must be JSON objects")
     knowledge_id = selected.get("knowledge_id")
     permissions = selected.get("permissions", [])
+    if knowledge_id is None and env_name == GLOBAL_TOKEN_SCOPES_ENV:
+        return None
     if not isinstance(knowledge_id, str) or knowledge_id not in DEPARTMENTS:
-        raise RuntimeError(f"{TOKEN_SCOPES_ENV} contains an invalid knowledge_id")
-    if not isinstance(permissions, list) or not all(
-        isinstance(item, str) for item in permissions
-    ):
-        raise RuntimeError(f"{TOKEN_SCOPES_ENV} contains invalid permissions")
+        raise RuntimeError(f"{env_name} contains an invalid knowledge_id")
     return McpScope(knowledge_id, frozenset(permissions))

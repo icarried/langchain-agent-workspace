@@ -1,0 +1,4 @@
+interface:
+  display_name: "Official Document Formatting API"
+  short_description: "Format DOC/DOCX URLs through the unified API"
+  default_prompt: "Use $official-document-formatting-api to format a server-reachable official-document URL and return the validated DOCX file."

@@ -31,6 +31,11 @@
     "src/agents/__init__.py": "src/src/agents/__init__.py",
     "src/agents/openai_compatible.py": "src/src/agents/openai_compatible.py",
     "src/agents/openai_compatible_inputs.py": "src/src/agents/openai_compatible_inputs.py",
-    "src/document_conversion.py": "src/src/document_conversion.py"
+    "src/agents/mcp_auth.py": "src/src/agents/mcp_auth.py",
+    "src/document_conversion.py": "src/src/document_conversion.py",
+    "src/document_ocr/__init__.py": "src/src/document_ocr/__init__.py",
+    "src/document_ocr/base.py": "src/src/document_ocr/base.py",
+    "src/document_ocr/gpu_stack.py": "src/src/document_ocr/gpu_stack.py",
+    "src/model_gateway.py": "src/src/model_gateway.py"
   }
 }

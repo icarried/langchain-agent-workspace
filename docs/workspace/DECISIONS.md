@@ -2,6 +2,55 @@
 
 用于记录对后续开发有影响的设计决策。
 
+## 2026-08-02 - 开发阶段 OpenAI-compatible 与 MCP 复用入口 token
+
+- 状态: Accepted（临时开发策略）
+- 决策: 本机敏捷开发阶段让 `AGENT_GATEWAY_API_KEY` 与 `AGENT_MCP_TOKENS_JSON` 使用同一个强随机 token；MCP 映射仍显式限制为 `official-document-formatting:format`，不因 token 复用而放弃工具级授权。
+- 原因: 当前只有受信任的开发调用方，复用入口 token 可减少联调配置；真实值只保存在忽略的 `.env.local`，不写入代码、任务台账、环境账本或部署文档。
+- 退出条件: 进入多人、多租户或正式生产阶段时拆分 OpenAI 与 MCP token，分别轮换并按客户端授予最小 MCP 权限。
+
+## 2026-08-01 - 公文格式化 MCP 允许受控 MinIO URL 输入
+
+- 状态: Accepted
+- 决策: `official_document_format` 的 `document` 参数允许 `content_base64` 或 HTTP(S) `url` 二选一；URL 下载复用共享远程附件模块的白名单、大小、超时和预签名 Host/传输地址分离逻辑。
+- 原因: MinIO 预签名 URL 是平台传递文件的常用方式，Base64 会增加客户端内存和 MCP 消息体负担。
+- 影响: URL 必须能从公文 worker 所在网络访问，且路径或显式 `filename` 必须显示 `.doc` 或 `.docx`；完整签名查询参数不写入日志或结果。
+
+## 2026-08-01 - 公文格式化统一接收 DOCX 与旧版 DOC
+
+- 状态: Accepted
+- 决策: `official_document_formatting` 的 CLI、OpenAI-compatible 和 MCP 输入统一接受 `.docx` 与 `.doc`；旧 DOC 只在每次请求的临时目录中通过共享 `src.document_conversion.convert_doc_to_docx` 转换，随后复用原有 DOCX 格式化和内容保护校验，输出固定为 DOCX。
+- 原因: 确定性格式化核心依赖 `python-docx`，直接处理二进制 DOC 不可靠；工作区已有具备 LibreOffice 优先、Windows Word 回退和宏禁用的共享转换边界。
+- 影响: 部署环境需要 LibreOffice，或 Windows 上的 Microsoft Word 与 pywin32，才能处理 DOC；转换不可用时返回明确错误，DOCX 处理不受影响，原始 DOC 不会被覆盖或持久化。
+
+## 2026-08-01 - 批量简历 PDF 复用工作区 PaddleOCR-VL
+
+- 状态: Accepted
+- 决策: `batch_resume_review_llm` 继续在 loader边界逐页解析 PDF；有效文本页直接生成
+  `pdf_line`，无有效文本页使用 PyMuPDF渲染为 PNG，再调用共享
+  `src/document_ocr/GPUStackPaddleOCRVL`。图片型 DOCX复用同一 provider。
+- 配置: 默认使用 `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL` 和
+  `paddleocr-vl-1.6`；批量简历仅保留模型、Base URL、超时和最大 OCR页数覆盖变量。
+- 原因: 工作区已经为部门知识库建立了可复用、脱敏错误的 OCR provider；继续维护百炼
+  `qwen3.5-ocr` 私有实现会造成密钥、提示词和故障处理分叉。
+- 影响: 该决策取代 2026-06-24 的百炼 OCR provider选择，但保留“文本优先、按需 OCR、
+  dry-run仍执行必要解析、每批页数保护”的行为。standalone清单同步携带共享 OCR模块。
+
+## 2026-08-01 - MCP 使用单入口动态聚合与稳定工具命名空间
+
+- 状态: Accepted
+- 决策: 生产只公开 `http://<host>:8008/mcp`。独立 Compose 内部服务 `mcp-gateway`
+  使用 FastMCP动态 composition代理各 worker 的 `/mcp`，不为智能体增加公网端口或
+  `/agents/<name>/mcp` 路径。首批在既有部门知识库外增加 `batch_resume_review` 和
+  `official_document_format`。
+- 隔离: 聚合层不导入或执行智能体业务逻辑；简历和公文业务仍在各自 worker 中运行。
+  网关、MCP聚合层、MCP backend和 OpenAI-compatible健康状态分层，Bearer token由代理
+  保留到 worker，按 `AGENT_MCP_TOKENS_JSON` 的工具权限校验。
+- 原因: 一个 MCP连接应能通过 `tools/list` 发现多个能力；按智能体占用端口或路径会把
+  客户端配置、鉴权和工具冲突重新分散。稳定前缀允许以后继续增加 backend而不改入口。
+- 兼容: 部门知识库既有三个工具名保持不变，旧 `DEPARTMENT_KB_MCP_TOKENS_JSON` 暂时
+  可用；单智能体 stdio/HTTP MCP入口只用于本地调试和独立交付。
+
 ## 2026-07-30 - 图生视频采用确定性参数边界和视觉LLM提示词改写
 
 - 状态: Accepted
@@ -376,3 +425,9 @@
   不提供部门选择参数。网关 API key不作为 MCP部门凭证。
 - 原因: 保留单一公开入口和 worker数据所有权，同时避免远程客户端通过参数探测或切换
   其他部门知识库。第二个 MCP接入前再启用带稳定命名空间的聚合 composition。
+## 2026-08-02 - Hermes curl 技能内置开源预览字体与 jq 回退
+
+- 状态: Accepted
+- 决策: 独立的 Hermes 公文格式化 curl 技能不打包专有的方正小标宋、GB2312 仿宋或楷体，改为随包提供 SIL OFL 许可的 Noto Sans SC/Noto Serif SC 和用户级 fontconfig 映射；同时为已确认的 x86_64 目标服务器内置经官方发布校验和验证的静态 jq 1.8.1，在系统 jq 缺失时回退使用。
+- 原因: 格式化 API 本身只写 DOCX 字体名称，字体只影响 Linux/WPS/LibreOffice 预览；目标服务器具备 curl、coreutils 和 unzip，但没有 jq/fontconfig。内置可再分发字体和 jq 可减少敏捷部署前置条件，同时不能把替代字体描述为组织规定的专有原字体。
+- 影响: curl 调用不依赖 Python，目标 x86_64 服务器无需另装 jq；非 x86_64 主机仍需系统 jq。字体安装是可选的预览步骤并需要 fontconfig，最终生产复核仍应使用组织获授权的准确字体。

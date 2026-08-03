@@ -443,7 +443,7 @@ def _ocr_images(
             )
         )
     if not elements:
-        raise ValueError(f"Bailian OCR returned no reviewable text for '{source}'")
+        raise ValueError(f"workspace OCR returned no reviewable text for '{source}'")
     return elements
 
 

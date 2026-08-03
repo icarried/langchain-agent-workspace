@@ -9,6 +9,167 @@
 
 ## 当前任务
 
+### T-064 创建 Hermes 公文格式化 curl 技能
+
+- 状态: Done
+- 目标: 创建一个不依赖 Python 的 Hermes 技能，使用 curl 调用 OpenAI-compatible 公文格式化接口，内含技能本地密钥配置、可再分发的公文字体替代资源及安装辅助脚本，并打包到桌面。
+- 验收标准:
+  - 技能符合 Hermes/Agent Skills 的 `SKILL.md` 目录格式，可复制到 `~/.hermes/skills/` 后发现。
+  - Bash 调用脚本支持 URL、Base URL、Bearer token、dry-run、输出路径和超时配置，且不输出密钥或输入 URL 查询参数。
+  - 正式响应校验 Base64、DOCX ZIP 结构、字节数和 SHA-256 后原子落盘。
+  - ZIP 内包含忽略的 `.env.local`、开源字体替代资源、字体映射和安装说明，不把专有公文字体冒充为可再分发资源。
+  - skill 基础校验、Bash 语法检查和模拟 OpenAI-compatible API 调用通过，并生成桌面 ZIP 包。
+- 执行计划:
+  - 使用 skill 模板初始化独立 curl 版本，编写 Bash 调用与 DOCX 校验脚本。
+  - 添加技能本地环境配置、Linux 字体安装/映射辅助脚本和依赖说明。
+  - 在 WSL 中检查依赖并模拟 API 响应，完成校验后打包交付。
+- 验证:
+  - `quick_validate.py hermes-skills/official-document-formatting-curl` 输出 `Skill is valid!`，三个 Bash 脚本和测试脚本均通过 `bash -n`。
+  - WSL 模拟 OpenAI-compatible API 验证 Bearer、模型、`file_url`、Base64、SHA-256、DOCX ZIP 与原子落盘，且 stdout/stderr 不含测试 token 或带签名 URL。
+  - 目标服务器只读检查确认架构为 x86_64，已具备 curl、base64、sha256sum、stat、unzip、realpath 和 mktemp，但缺少 jq/fontconfig；技能内置的静态 jq 1.8.1 通过官方 `sha256sum.txt` 校验并可执行。
+  - Noto Sans SC/Noto Serif SC 字体文件通过 fontconfig 扫描，用户级安装脚本实测将方正小标宋简体、仿宋_GB2312 映射为 Noto Serif SC，将黑体映射为 Noto Sans SC。
+  - `.env.local` 被 `.gitignore` 忽略；交付 ZIP 明确包含该密钥文件、字体、字体许可、映射、jq 二进制及许可。
+  - 生成并复制 `official-document-formatting-curl-hermes-skill.zip` 到桌面；ZIP 为 27,919,666 字节，SHA-256 为 `d8de79d73b1df9592b6f9814d4578cf232289ea6015c7cd531519f85a983e7f7`。
+- 最后更新: 2026-08-02（完成）
+
+### T-063 创建 Hermes 公文格式化 API 技能
+
+- 状态: Done
+- 目标: 创建一个可加载到服务器 Hermes 的独立技能，通过 OpenAI-compatible Chat Completions 接口接收服务端可访问的 DOC/DOCX URL，保存并校验返回的格式化 DOCX。
+- 验收标准:
+  - 技能符合 Hermes/Agent Skills 的 `SKILL.md` 目录格式，可复制到 `~/.hermes/skills/` 后发现。
+  - 内置无第三方依赖的调用脚本，支持 Base URL、Bearer token、URL、dry-run、输出路径和超时配置。
+  - 脚本不打印 token 或带签名查询参数的 URL，正式结果校验 Base64、DOCX ZIP 头、字节数和 SHA-256 后原子落盘。
+  - 提供服务器安装和调用步骤，并生成可上传的 ZIP 包。
+  - skill 基础校验、脚本模拟 API 测试和现有 URL 契约回归通过。
+- 验证:
+  - `quick_validate.py hermes-skills/official-document-formatting-api` 输出 `Skill is valid!`。
+  - 调用脚本 Ruff 与 `py_compile` 通过；本机模拟 OpenAI-compatible API 验证 Bearer、模型、`file_url`、Base64、SHA-256、DOCX ZIP 和原子落盘，stdout 不含 token 或签名 URL。
+  - 公文格式化 `file_url` 解析和 MCP MinIO URL 两项现有回归通过：`2 passed`。
+  - 生成 `dist/official-document-formatting-api-hermes-skill.zip`；按后续明确要求，ZIP 内含被 Git 忽略的技能本地 `.env.local` 共享密钥配置，源密钥仍不进入 Git 跟踪文件。
+- 最后更新: 2026-08-02（完成）
+
+### T-062 开发阶段统一复用 OpenAI 与 MCP 入口 token
+
+- 状态: Done
+- 目标: 在敏捷开发阶段使用同一个强随机 token 保护统一 OpenAI-compatible 网关和公文格式化 MCP，同时保留 MCP 工具级权限校验。
+- 验收标准:
+  - `.env.local` 中 `AGENT_GATEWAY_API_KEY` 与 `AGENT_MCP_TOKENS_JSON` 使用同一个 token，且不在受版本控制文件中记录密钥值。
+  - MCP token 只授予 `official-document-formatting:format` 权限。
+  - 重建相关 Compose 服务后，正确 token 可调用，错误 token 和无 token 均被拒绝。
+- 验证:
+  - `gateway`、`mcp-gateway`、`official-document-formatting` 重建成功并恢复运行。
+  - `POST http://127.0.0.1:8008/mcp` 初始化协商到 MCP `2025-11-25`，`tools/list` 包含 `official_document_format`。
+  - 使用 DOCX Base64 执行 `dry_run=true`：正确共享 token 返回 `isError=false`，错误 token 与无 token 均返回 `isError=true`。
+- 最后更新: 2026-08-02（完成）
+
+### T-061 Docker 支持公文格式化 MinIO URL
+
+- 状态: Done
+- 目标: 让 Compose 中的公文格式化 worker 能可靠访问内部或平台 MinIO URL，并把下载白名单配置明确交付给部署环境。
+- 验收标准:
+  - Compose 内部 `department-kb-minio` 不经 GPU 代理转发。
+  - 环境模板与生产部署说明包含 `AGENT_FILE_ALLOWED_HOSTS` 的配置要求。
+  - Compose 配置校验通过，仍仅发布网关端口。
+- 验证:
+  - WSL `Ubuntu` 中执行 `docker compose config --quiet` 通过；当前路径为 `/mnt/e/My_sorcode/--创建智能体工作空间--`，执行用户为 `enovo`。
+  - 渲染 Compose 仅包含一个 `published: "8008"`，仍由统一 gateway 对外发布。
+  - 已重建共享镜像并重启 `official-document-formatting`、`mcp-gateway` 和 `gateway`；`POST http://127.0.0.1:8008/mcp` 的 `initialize` 返回 200，`tools/list` 包含 `official_document_format`、`content_base64` 与 URL 输入描述。
+- 最后更新: 2026-08-01（完成）
+
+### T-060 公文格式化 MCP 支持 MinIO URL
+
+- 状态: Done
+- 目标: 让 `official_document_format` MCP 除 Base64 上传外，也能安全接收服务端可访问的 HTTP(S) URL，例如 MinIO 预签名 URL。
+- 验收标准:
+  - `document.content_base64` 与 `document.url` 二选一，URL 可使用可信原始文件名或从路径推断扩展名。
+  - URL 下载复用共享的主机白名单、大小、超时和预签名 Host/传输地址分离逻辑。
+  - MCP URL 回归、原有公文格式化回归和 Ruff 通过，调用文档包含 MinIO 示例。
+- 验证:
+  - `conda run -n langchain python -m pytest tests/agents/test_official_document_formatting.py tests/agents/test_official_document_formatting_llm.py tests/agents/test_remote_files.py -q` 通过，17 项覆盖 MinIO URL、DOC/DOCX 与共享远程附件边界。
+  - `conda run -n langchain ruff check src/agents/official_document_formatting tests/agents/test_official_document_formatting.py tests/agents/test_official_document_formatting_llm.py tests/agents/test_remote_files.py` 通过。
+- 最后更新: 2026-08-01（完成）
+
+### T-059 公文格式化 MCP 支持 DOC 与 DOCX
+
+- 状态: Done
+- 目标: 让 `official_document_formatting` 的 CLI、OpenAI-compatible 和统一 MCP 均接收 DOCX 与旧版 DOC，并统一返回格式化 DOCX。
+- 验收标准:
+  - DOC 通过工作区共享转换器在请求临时目录转换，不改写或持久化原始 DOC。
+  - MCP 上传的 DOC 与 DOCX 都使用同一个确定性格式化服务，返回 DOCX 文件载荷。
+  - 聚焦回归和 Ruff 通过，运行与智能体文档明确转换依赖和输出格式。
+- 执行计划:
+  - 在服务层复用 `src.document_conversion.convert_doc_to_docx`，保持格式化核心只接收有效 DOCX。
+  - 放开 MCP/OpenAI-compatible 的扩展名白名单并补充 DOC 转换测试。
+  - 同步运行文档、登记表和架构决策。
+- 验证:
+  - `conda run -n langchain python -m pytest tests/agents/test_official_document_formatting.py tests/agents/test_official_document_formatting_llm.py -q` 通过，13 项测试覆盖 CLI/服务层、OpenAI-compatible 与 MCP 上传 DOC 的转换路径。
+  - `conda run -n langchain ruff check src/agents/official_document_formatting tests/agents/test_official_document_formatting.py tests/agents/test_official_document_formatting_llm.py` 通过。
+- 最后更新: 2026-08-01（完成）
+
+### T-058 批量简历审查增加可审计六维评分卡
+
+- 状态: Done
+- 目标: 让批量简历 CLI、API、OpenAI-compatible 与 MCP 的正式输出均包含总分可追溯的六维评分依据。
+- 验收标准:
+  - `qualified` 和 `pending_review` 候选人返回六项固定评分的得分、上限、简历证据、得分说明与扣分/核验项，六项之和等于总分。
+  - `excluded` 候选人保留六项评分卡但不计分，且不参与排名。
+  - Markdown 报告展示硬性条件证据和六维表格；MCP 的结构化响应暴露 `score_breakdown`。
+  - 聚焦回归和 Ruff 通过。
+- 执行计划:
+  - 扩展候选人决策 schema 和模型 JSON 契约，固定评分维度与上限。
+  - 在解析、排名和 Markdown/HTML 报告渲染阶段校验分项分数，并补充 MCP/报告测试和运行说明。
+- 验证:
+  - 批量简历 MCP 聚焦回归 16 项通过，Ruff 与 compileall 通过。
+  - 使用 3 份候选示例和完整测试 JD 进行正式 MCP 调用：最新一次张宇 88 分、王强 30 分、赵雪 14 分；三人六项分数均完整且分项合计等于总分，六项均返回非空简历证据；同一响应的 `report_html` 含六维评分卡。模型非零温度下不同运行的具体分数可能小幅波动。
+  - 对模型漏填分项分数的情况增加一次基于已有证据的评分卡修复重试；修复仍失败时保持未评分并明确提示，不伪造分数。
+  - HTML 仅使用当次已生成的候选人决策渲染，不重新下载、读取或嵌入简历原文。
+- 最后更新: 2026-08-01（完成）
+
+### T-057 批量简历 PDF 接入工作区共享 OCR
+
+- 状态: Done
+- 目标: 保持 `batch_resume_review_llm` 的 PDF 文本解析能力，并将扫描型 PDF 页和图片型 DOCX 的 OCR 从智能体私有百炼实现切换到工作区共享 GPU Stack PaddleOCR-VL provider。
+- 验收标准:
+  - 本地路径、远程附件、OpenAI-compatible 和统一 MCP 上传的 PDF 均沿用同一 loader。
+  - 文本型 PDF 直接提取，不调用 OCR；无有效文本的页面渲染为 PNG 后调用 `src/document_ocr/`。
+  - OCR 默认使用 GPU Stack `paddleocr-vl-1.6`、`GPU_STACK_API_KEY` 和 `GPU_STACK_BASE_URL`，保留批量简历专用模型、超时、页数覆盖变量。
+  - 独立打包清单包含共享 OCR 和 GPU Stack 配置模块，不产生跨包缺失。
+  - PDF/OCR 聚焦测试、批量简历回归、Ruff 和编译通过。
+- 执行计划:
+  - 将批量简历 OCR 薄适配器改为调用共享 `GPUStackPaddleOCRVL`。
+  - 增加文本 PDF 不触发 OCR、扫描 PDF 触发共享 OCR及 provider 配置测试。
+  - 更新环境模板、README、运行文档、登记表和架构决策。
+- 验证:
+  - 批量简历 PDF/OCR、OpenAI-compatible、统一 MCP和网关聚焦回归通过。
+  - 动态生成文本型 PDF经 MCP上传成功，且断言全程未调用 OCR；模拟扫描 PDF页成功调用共享 `GPUStackPaddleOCRVL` 并生成 `ocr_line`。
+  - Ruff、compileall、standalone manifest JSON和 `git diff --check` 通过。
+  - standalone ZIP重新生成，包含 `src/document_ocr/`、`src/model_gateway.py`和共享 MCP鉴权模块；解压后导入成功，默认 OCR模型为 `paddleocr-vl-1.6`。
+  - 未发送真实简历或执行付费 OCR请求；真实 GPU Stack调用留给部署后的受控扫描件验收。
+- 最后更新: 2026-08-01（完成）
+
+### T-056 统一 MCP 聚合批量简历审查与公文格式化
+
+- 状态: Done
+- 目标: 在现有统一网关 `8008/mcp` 下聚合多个 MCP worker，首批补充批量简历审查和公文格式化，同时保留 OpenAI-compatible 模型接口及 worker 隔离。
+- 验收标准:
+  - MCP 客户端只配置一个 `http://<host>:8008/mcp`，可发现部门知识库、批量简历审查和公文格式化工具。
+  - 多个 MCP backend 通过稳定工具命名空间聚合，不新增宿主机公开端口，也不按智能体增加公网 MCP 路径。
+  - `batch_resume_review_llm` MCP 复用现有服务层并支持批量上传、岗位要求和 dry-run。
+  - `official_document_formatting` MCP 复用确定性格式化服务，支持 DOCX 上传、dry-run 和格式化 DOCX 返回。
+  - MCP 与 OpenAI-compatible 健康状态隔离；聚焦测试、Ruff、配置校验和 WSL Compose 配置通过。
+- 执行计划:
+  - 将现有 MCP backend 挂载到独立的 Compose 内部聚合服务，并使用稳定前缀避免工具冲突。
+  - 在批量简历和公文格式化 worker 内挂载 Streamable HTTP MCP，不发布 worker 端口。
+  - 更新网关注册、Compose、环境模板、运行文档、智能体登记和架构决策。
+  - 执行协议、网关、智能体和 Compose 聚焦验证。
+- 验证:
+  - MCP聚合、统一网关、两个目标智能体和部门鉴权聚焦回归：43 passed。
+  - 本机 FastMCP 3.x下 Ruff和 compileall通过；临时隔离加载生产锁定 FastMCP 2.14.7后，聚合注册、命名空间和调用测试：2 passed。
+  - WSL `Ubuntu` 中 `docker compose config --quiet` 通过；服务清单包含内部 `mcp-gateway`，端口断言确认仍只有 `gateway` 发布宿主机端口。
+  - `git diff --check` 通过；文档、环境模板、任务台账和架构决策已同步。
+- 最后更新: 2026-08-01（完成）
+
 ### T-055 统一网关增加部门知识库 MCP 入口
 
 - 状态: Done

@@ -13,7 +13,9 @@ python -m venv .venv
 Copy-Item .env.example .env.local
 ```
 
-在 `.env.local` 中填写 `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`。真实密钥不要提交或发给客户端。
+在 `.env.local` 中填写 `GPU_STACK_API_KEY` 和 `GPU_STACK_BASE_URL`。文本型 PDF 直接解析；
+扫描 PDF页和图片型 DOCX默认调用 GPU Stack `paddleocr-vl-1.6`。正式筛选模型也默认复用
+GPU Stack；真实密钥不要提交或发给客户端。
 
 ## OpenAI-compatible Server
 

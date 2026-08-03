@@ -19,6 +19,7 @@ Stream: enabled
 - `smart-resume-screening-agent`
 - `contract-review-agent`
 - `official-document-review-agent`
+- `official-document-formatting-agent`
 - `langchain-knowledge-base-agent`
 - `department-knowledge-base-agent`
 - `image-generation-agent`
@@ -39,12 +40,19 @@ Transport: Streamable HTTP
 Authorization: Bearer <部门专用 MCP token>
 ```
 
-首期 MCP注册与模型注册相互独立，只代理 `department-knowledge-base`。三个只读工具为
-`department_kb_list_spaces`、`department_kb_query`和
-`department_kb_get_import_status`。工具 schema不包含 `knowledge_id`；每个 token必须在
-`DEPARTMENT_KB_MCP_TOKENS_JSON` 中固定绑定恰好一个知识空间。需要另一个部门时应新增
-另一个 token和 MCP连接配置，不能在工具调用中选择部门。首期不开放保存、删除、重建
-或任意原件下载。
+MCP注册与模型注册相互独立。公开 `/mcp` 先反向代理到 Compose内部 `mcp-gateway`，
+再由 FastMCP composition动态代理各 worker，不在聚合进程执行业务逻辑。当前工具为：
+
+- `department_kb_list_spaces`、`department_kb_query`、
+  `department_kb_get_import_status`：部门知识库只读能力。
+- `batch_resume_review`：批量简历审查、筛除、评分和排序。
+- `official_document_format`：确定性格式化一份 DOCX 或旧版 DOC，并返回 DOCX 成品；文件可用 Base64 上传或传入服务端可访问的 MinIO 预签名 URL。
+
+新 token统一写入 `AGENT_MCP_TOKENS_JSON`，权限可选
+`department-kb:list`、`department-kb:query`、`department-kb:import-status`、
+`batch-resume-review:review`、`official-document-formatting:format`。使用部门工具的 token
+还必须固定一个 `knowledge_id`。旧 `DEPARTMENT_KB_MCP_TOKENS_JSON` 仅保留部门工具兼容；
+首期部门知识库仍不开放保存、删除、重建或任意原件下载。
 
 `AGENT_GATEWAY_API_KEY` 与部门 MCP token用途不同，不得互相替代。网关原样转发 MCP
 协议头和 SSE，不缓存响应；部门 worker负责 token scope校验。MCP不可用不会隐藏
@@ -184,9 +192,9 @@ URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件�
 
 ## 公文格式化模型
 
-`official-document-formatting-agent` 接收一份 DOCX 附件，调用确定性公司格式化规则，
+`official-document-formatting-agent` 接收一份 DOCX 或旧版 DOC 附件，调用确定性公司格式化规则，
 不调用 LLM，并在输出前校验正文和表格内容未变化。正式结果通过非流式 `message.file`
-或流式 `delta.file` 返回 Base64 DOCX、
+或流式 `delta.file` 返回 Base64 DOCX；DOC 会在请求临时目录转换后处理、
 文件名、MIME、大小和 SHA-256。网关只代理该结构化字段，不保存文件；AI 平台负责解码、
 安全验证、MinIO 持久化和 `file_mapping`。默认输入上限由
 `OFFICIAL_DOCUMENT_FORMATTING_MAX_BYTES` 控制为 20 MiB。
@@ -198,6 +206,6 @@ URL传入。Qwen3.5只做意图分类；仅当分类为 `save` 且存在附件�
 3. 在 `compose.yaml` 新增独立 worker 服务，内部监听 `8080`，不要发布宿主机端口。
 4. 更新智能体登记表和平台文档，并补充网关聚合、流式代理和故障隔离测试。
 
-新增 MCP backend时在同一注册表的 `mcp_servers` 中单独登记。当前 `/mcp`只允许一个
-默认 backend；接入第二个 MCP前应启用 FastMCP composition并为工具增加稳定命名空间，
-不能让多个 backend争用默认路由。
+新增 MCP backend时在注册表 `mcp_backends` 中登记内部 URL、稳定 prefix和必要的
+`tool_names` 映射；外层 `mcp_servers` 始终只登记 `workspace-mcp-gateway`。worker必须在
+自己的内部 `8080/mcp` 提供 Streamable HTTP，不能发布端口，也不能增加新的公网路径。

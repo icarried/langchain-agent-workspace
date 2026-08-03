@@ -7,7 +7,7 @@ import typer
 
 from .service import format_official_document
 
-app = typer.Typer(help="按公司验证规则格式化 DOCX 公文。")
+app = typer.Typer(help="按公司验证规则格式化 DOCX 或旧版 DOC 公文。")
 
 
 @app.command("format")
