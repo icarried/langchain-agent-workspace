@@ -42,7 +42,7 @@ def review(
         None, "--output", "-o", help="Markdown 报告输出路径"
     ),
     provider: str = typer.Option(
-        "deepseek", "--provider", help="deepseek 或 dashscope"
+        "deepseek", "--provider", help="deepseek"
     ),
     model: str | None = typer.Option(None, "--model", help="可选模型名覆盖"),
     dry_run: bool = typer.Option(

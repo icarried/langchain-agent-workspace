@@ -24,13 +24,6 @@ MODEL_CONFIGS = {
         api_key_env="DEEPSEEK_API_KEY",
         notes="DeepSeek API 使用 OpenAI-compatible 接口；适合把确定性检测结果整理为可读整改报告。",
     ),
-    "dashscope": ModelConfig(
-        provider="dashscope",
-        model="qwen-plus",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        api_key_env="DASHSCOPE_API_KEY",
-        notes="DashScope 使用 OpenAI 兼容模式接入 Qwen；正式运行前应确认模型上下文和价格。",
-    ),
 }
 
 

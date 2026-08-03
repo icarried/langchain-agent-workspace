@@ -26,14 +26,6 @@ MODEL_CONFIGS = {
         practical_chunk_chars=12000,
         notes="DeepSeek API 使用 OpenAI-compatible 接口；合同按章节分块和维度审查，便于证据定位。",
     ),
-    "dashscope": ModelConfig(
-        provider="dashscope",
-        model="qwen-plus",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        api_key_env="DASHSCOPE_API_KEY",
-        practical_chunk_chars=12000,
-        notes="DashScope 使用 OpenAI 兼容模式接入 Qwen；正式运行前应确认模型上下文和价格。",
-    ),
 }
 
 

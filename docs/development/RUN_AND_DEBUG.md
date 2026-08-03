@@ -168,17 +168,6 @@ python -m src.agents.tender_format_review review `
   --provider deepseek
 ```
 
-调用 DashScope/Qwen：
-
-```powershell
-python -m src.agents.tender_format_review review `
-  path\to\招标文件.docx `
-  --review-guide C:\Users\Lenovo\Desktop\招标文件审查事项.md `
-  --catalog 临时文件\招标文件参考目录.txt `
-  --output 临时文件\招标文件格式审查报告.md `
-  --provider dashscope --model qwen-plus
-```
-
 启动 API 服务：
 
 ```powershell
@@ -270,15 +259,6 @@ python -m src.agents.resume_review review `
   path\to\resume.docx `
   --job-description path\to\jd.txt `
   --provider deepseek
-```
-
-调用 DashScope/Qwen：
-
-```powershell
-python -m src.agents.resume_review review `
-  path\to\resume.txt `
-  --job-description path\to\jd.txt `
-  --provider dashscope --model qwen-plus
 ```
 
 启动 API 服务：

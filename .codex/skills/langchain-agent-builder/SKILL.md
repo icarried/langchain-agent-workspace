@@ -44,7 +44,6 @@ For platform-facing agents, add `openai_compatible_api.py` beside the normal `ap
 Use `.env.local` for real keys and `.env.example` for variable names only. For OpenAI-compatible providers:
 
 - DeepSeek: `DEEPSEEK_API_KEY`, base URL `https://api.deepseek.com`.
-- DashScope/Qwen: `DASHSCOPE_API_KEY`, base URL `https://dashscope.aliyuncs.com/compatible-mode/v1`.
 
 Keep provider configuration separate from graph logic. Let CLI options override defaults, but fail clearly when a required key is missing.
 

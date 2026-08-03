@@ -129,7 +129,7 @@
 ### T-057 批量简历 PDF 接入工作区共享 OCR
 
 - 状态: Done
-- 目标: 保持 `batch_resume_review_llm` 的 PDF 文本解析能力，并将扫描型 PDF 页和图片型 DOCX 的 OCR 从智能体私有百炼实现切换到工作区共享 GPU Stack PaddleOCR-VL provider。
+- 目标: 保持 `batch_resume_review_llm` 的 PDF 文本解析能力，并将扫描型 PDF 页和图片型 DOCX 的 OCR 从智能体私有实现切换到工作区共享 GPU Stack PaddleOCR-VL provider。
 - 验收标准:
   - 本地路径、远程附件、OpenAI-compatible 和统一 MCP 上传的 PDF 均沿用同一 loader。
   - 文本型 PDF 直接提取，不调用 OCR；无有效文本的页面渲染为 PNG 后调用 `src/document_ocr/`。
@@ -908,7 +908,7 @@
   - `src/agents/langchain_knowledge_base/` 保留独立 `pyproject.toml`、Dockerfile、README 和 `.env.example`。
   - 运行、测试、入库、问答和 Docker Compose 命令均以智能体目录为工作目录。
   - 默认不依赖外部 Chroma 服务，向量数据持久化到 `data/chroma/` 或 Compose 命名卷 `kb_chroma_data`。
-  - 支持聊天模型和 embedding 模型分开配置，可用 DeepSeek 负责问答、百炼/DashScope `text-embedding-v4` 负责入库向量化。
+  - 支持聊天模型和 embedding 模型分开配置，可用 DeepSeek 负责问答、GPU Stack embedding 模型负责入库向量化。
   - 提供 `POST /v1/retrieval` 纯检索接口，并在同一个 API app 中提供 `GET /v1/models` 和 `POST /v1/chat/completions`。
   - 工作区登记表、运行手册、密钥说明和设计决策记录该智能体的独立子项目定位。
   - 单元测试、eval fixture 和 Ruff 通过；Docker 运行验证按本机 Docker 可用性单独执行。
@@ -985,25 +985,25 @@
   - `ruff check src\agents\batch_resume_review_llm tests\agents\test_batch_resume_review_llm.py` 通过。
 - 最后更新: 2026-06-25
 
-### T-023 扩展批量简历多格式解析与百炼 OCR
+### T-023 扩展批量简历多格式解析与按需 OCR
 
 - 状态: Done
-- 目标: 让 `batch-resume-review` 统一接受 PDF、DOC、DOCX、MD、TXT 简历，并在 PDF 或图片型 Office 文档缺少可用文本时使用 `DASHSCOPE_API_KEY` 调用百炼 OCR。
+- 目标: 让 `batch-resume-review` 统一接受 PDF、DOC、DOCX、MD、TXT 简历，并在 PDF 或图片型 Office 文档缺少可用文本时调用 OCR 模型。
 - 验收标准:
   - 本地路径、HTTP(S) URL 与 MCP 上传均接受 `.pdf`、`.doc`、`.docx`、`.md`、`.txt`。
   - DOC/DOCX 可提取正文；PDF/DOC/DOCX 无可审查文本时自动进入 OCR，文本型文件不产生 OCR 调用。
   - OCR 配置仅读取环境变量，缺少密钥或 OCR 调用失败时保留单候选人失败隔离并给出可诊断错误。
   - 增加解析/OCR 单元测试，定向 pytest 与 Ruff 通过，并同步 README、运行手册、登记表、密钥说明和设计决策。
 - 执行计划:
-  - 核对现有 loader、CLI/API/MCP 输入契约及百炼 OCR 官方接口。
-  - 在 loader 边界增加 DOC 解析、文本质量判断和可替换的百炼 OCR 客户端。
+  - 核对现有 loader、CLI/API/MCP 输入契约及 OCR 模型接口。
+  - 在 loader 边界增加 DOC 解析、文本质量判断和可替换的 OCR 客户端。
   - 扩充测试夹具与入口文件类型校验，更新依赖和文档。
   - 运行定向测试、全部智能体回归和 Ruff。
 - 验证:
   - `python -m pytest tests\agents\test_batch_resume_review.py -q` 通过，26 个测试通过；覆盖五种扩展名、DOC 转换、文本 DOCX 不触发 OCR、图片 DOCX OCR、扫描 PDF 分页 OCR、缺少密钥和 MCP MD 上传。
   - `python -m pytest tests\agents -q` 通过，47 个智能体测试通过。
   - `ruff check src\agents\batch_resume_review tests\agents\test_batch_resume_review.py` 通过。
-  - 使用无敏感信息的合成简历图片真实调用百炼 `qwen3.5-ocr` 成功，正确提取姓名、技能和学历。
+  - 使用无敏感信息的合成简历图片真实调用 OCR 模型成功，正确提取姓名、技能和学历。
   - 已安装 PyMuPDF 到 `langchain` 环境，并生成 `dist/batch-resume-review-agent-0.4.0.zip`；ZIP 包含 OCR、DOC 转换模块和更新后的独立运行文档。
 - 最后更新: 2026-06-24
 
@@ -1348,7 +1348,7 @@
 ### T-007 建立模型配置与 provider 适配层
 
 - 状态: Backlog
-- 目标: 封装 DeepSeek、DashScope 和后续模型 provider 的配置加载。
+- 目标: 封装 DeepSeek 和后续模型 provider 的配置加载。
 - 验收标准:
   - 不在业务逻辑中直接读取环境变量。
   - 缺少 key 时给出清晰错误。

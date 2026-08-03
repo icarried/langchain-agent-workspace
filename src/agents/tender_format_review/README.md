@@ -22,12 +22,11 @@ Stream: 开启
 
 ## 为什么必须分块
 
-招标文件可能超过 10 万字。DeepSeek 与 Qwen/DashScope 均存在随模型版本变化的上下文上限；即使选用长上下文模型，整篇一次审查也容易出现证据定位差、跨章节事项遗漏、失败后无法局部重试等问题。因此默认每块约 16000 字符，并保留重叠上下文。
+招标文件可能超过 10 万字。DeepSeek 存在随模型版本变化的上下文上限；即使选用长上下文模型，整篇一次审查也容易出现证据定位差、跨章节事项遗漏、失败后无法局部重试等问题。因此默认每块约 16000 字符，并保留重叠上下文。
 
 当前模型接入策略：
 
 - DeepSeek: 通过 OpenAI-compatible API，默认 `deepseek-v4-flash`，需要 `DEEPSEEK_API_KEY`。
-- DashScope/Qwen: 通过 OpenAI-compatible API，默认 `qwen-plus`，需要 `DASHSCOPE_API_KEY`。
 - 具体上下文上限应在运行前核对官方模型页；本智能体使用保守分块，不依赖单次超长上下文。
 
 ## 运行

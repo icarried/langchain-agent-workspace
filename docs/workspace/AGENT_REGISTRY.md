@@ -77,8 +77,8 @@
 - MCP 入口: stdio `python -m src.agents.smart_resume_screening.mcp_server`；HTTP `python -m src.agents.smart_resume_screening.mcp_server --transport http --host 127.0.0.1 --port 8011 --path /mcp`；tool 名称 `screen_resumes`。
 - API 入口: `uvicorn src.agents.smart_resume_screening.api:app --reload --port 8011`，主接口 `POST /screen`。
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `smart-resume-screening-agent`。
-- 调试方式: 先用内置 `src/agents/smart_resume_screening/examples/` 执行 `--dry-run`，确认条件解析、候选人状态和排行榜；正式运行再接入 DeepSeek 或 DashScope/Qwen 整理报告。
-- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退；DashScope provider 使用 `DASHSCOPE_API_KEY`。可选 `SMART_RESUME_SCREENING_MODEL`、`SMART_RESUME_SCREENING_BASE_URL`。
+- 调试方式: 先用内置 `src/agents/smart_resume_screening/examples/` 执行 `--dry-run`，确认条件解析、候选人状态和排行榜；正式运行再接入 DeepSeek 整理报告。
+- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退。可选 `SMART_RESUME_SCREENING_MODEL`、`SMART_RESUME_SCREENING_BASE_URL`。
 - 关联任务: T-030、T-031
 - 备注: 本智能体定位为轻量结构化初筛配置器；复杂 OCR、远程 URL、高校参照、规则调整和独立打包仍优先使用 `batch-resume-review-llm`。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“岗位要求”“简历文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或文件链接。
 
@@ -91,8 +91,8 @@
 - MCP 入口: stdio `python -m src.agents.official_document_review.mcp_server`；HTTP `python -m src.agents.official_document_review.mcp_server --transport http --host 127.0.0.1 --port 8010 --path /mcp`；tool 名称 `review_official_document`。
 - API 入口: `uvicorn src.agents.official_document_review.api:app --reload --port 8010`，主接口 `POST /review`。
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `official-document-review-agent`。
-- 调试方式: 先用内置 `src/agents/official_document_review/examples/示例通知.md` 执行 `--dry-run`，确认文件解析、确定性检查和报告结构；正式运行再接入 DeepSeek 或 DashScope/Qwen 美化报告。
-- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退；DashScope provider 使用 `DASHSCOPE_API_KEY`。可选 `OFFICIAL_DOCUMENT_REVIEW_MODEL`、`OFFICIAL_DOCUMENT_REVIEW_BASE_URL`。
+- 调试方式: 先用内置 `src/agents/official_document_review/examples/示例通知.md` 执行 `--dry-run`，确认文件解析、确定性检查和报告结构；正式运行再接入 DeepSeek 美化报告。
+- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退。可选 `OFFICIAL_DOCUMENT_REVIEW_MODEL`、`OFFICIAL_DOCUMENT_REVIEW_BASE_URL`。
 - 关联任务: T-029、T-032
 - 备注: 第一版不接入 FastGPT 原工作流中的内网 `detect` 服务，不处理扫描 PDF OCR，也不生成带批注的 Word 修订稿；报告不替代单位公文审核流程。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“公文文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或文件链接。
 
@@ -123,8 +123,8 @@
 - MCP 入口: stdio `python -m src.agents.contract_review.mcp_server`；HTTP `python -m src.agents.contract_review.mcp_server --transport http --host 127.0.0.1 --port 8009 --path /mcp`；tool 名称 `review_contract`。
 - API 入口: `uvicorn src.agents.contract_review.api:app --reload --port 8009`，主接口 `POST /review`。
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `contract-review-agent`。
-- 调试方式: 先用内置 `src/agents/contract_review/examples/示例服务合同.md` 执行 `--dry-run`，确认解析、分块、六维审查结构和评分口径；正式运行再接入 DeepSeek 或 DashScope/Qwen。
-- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退；DashScope provider 使用 `DASHSCOPE_API_KEY`。可选 `CONTRACT_REVIEW_MODEL`、`CONTRACT_REVIEW_BASE_URL`。
+- 调试方式: 先用内置 `src/agents/contract_review/examples/示例服务合同.md` 执行 `--dry-run`，确认解析、分块、六维审查结构和评分口径；正式运行再接入 DeepSeek。
+- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退。可选 `CONTRACT_REVIEW_MODEL`、`CONTRACT_REVIEW_BASE_URL`。
 - 关联任务: T-028、T-032
 - 备注: 第一版支持 DOCX、文本型 PDF、TXT、MD；扫描 PDF OCR、外部法律知识库检索、红线批注和合同全文改写暂不包含。报告必须声明不替代执业律师正式法律意见。OpenAI-compatible 入口用于 FastGPT/Dify LLM 节点流式输出，可从 prompt 的“合同文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或文件链接。
 
@@ -164,8 +164,8 @@
 - 运行入口: `python -m src.agents.resume_review review <resume> --job-description <jd.txt> --output <report.md>`
 - MCP 入口: stdio `python -m src.agents.resume_review.mcp_server`；HTTP `python -m src.agents.resume_review.mcp_server --transport http --host 127.0.0.1 --port 8003 --path /mcp`；tool 名称 `review_resume`。
 - API 入口: 单独调试可运行 `uvicorn src.agents.resume_review.api:app --reload --port <非8008端口>`，主接口 `POST /review`；`8008` 已由统一网关占用。
-- 调试方式: 先运行 `--dry-run` 验证简历解析、分块和 JD 输入，再接入 DeepSeek 或 DashScope/Qwen 模型。
-- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退；DashScope provider 使用 `DASHSCOPE_API_KEY`。可选 `RESUME_REVIEW_MODEL`、`RESUME_REVIEW_BASE_URL`。
+- 调试方式: 先运行 `--dry-run` 验证简历解析、分块和 JD 输入，再接入 DeepSeek 模型。
+- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退。可选 `RESUME_REVIEW_MODEL`、`RESUME_REVIEW_BASE_URL`。
 - 关联任务: T-015
 - 备注: 第一版支持文本型 PDF，不支持扫描件 OCR；岗位 JD 可选，未提供 JD 时不生成匹配分，避免伪造岗位匹配依据。审查事项按 Markdown 文件拆分，正式 LLM 审查按基本条件/筛选条件/专业条件三个维度并行调用后汇总；学历维度默认加载 `src/reference_data/universities/` 高校参照。
 
@@ -178,8 +178,8 @@
 - MCP 入口: stdio `python -m src.agents.tender_format_review.mcp_server`；HTTP `python -m src.agents.tender_format_review.mcp_server --transport http --host 127.0.0.1 --port 8002 --path /mcp`；tool 名称 `review_tender_format`。
 - API 入口: `uvicorn src.agents.tender_format_review.api:app --reload --port 8001`，主接口 `POST /review`。
 - OpenAI-compatible 入口: 统一网关 `http://<host>:8008/v1`，模型 ID `tender-format-review-agent`。
-- 调试方式: 先运行 `--dry-run` 验证 docx 解析、分块和输出路径，再接入 DeepSeek 或 DashScope/Qwen 模型。
-- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退；DashScope provider 使用 `DASHSCOPE_API_KEY`。可选 `TENDER_REVIEW_MODEL`、`TENDER_REVIEW_BASE_URL`、`TENDER_REVIEW_MAX_REMOTE_FILE_BYTES`、`TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS`。
+- 调试方式: 先运行 `--dry-run` 验证 docx 解析、分块和输出路径，再接入 DeepSeek 模型。
+- 需要的环境变量: 默认 `GPU_STACK_API_KEY`，旧 `DEEPSEEK_API_KEY` 仅兼容回退。可选 `TENDER_REVIEW_MODEL`、`TENDER_REVIEW_BASE_URL`、`TENDER_REVIEW_MAX_REMOTE_FILE_BYTES`、`TENDER_REVIEW_REMOTE_TIMEOUT_SECONDS`。
 - 关联任务: T-009、T-011、T-012、T-026
 - 备注: 对 10 万字以上文件默认采用“解析元素 -> 章节/长度分块 -> 分块审查 -> 汇总复核”，不依赖整篇一次放入上下文。OpenAI-compatible 入口用于 Dify/FastGPT LLM 节点流式输出，可从 prompt 的“招标文件”区块、平台 `附件：` 列表或 OpenAI content parts 的 `file_url.url` 读取服务端路径或 HTTP(S) `.docx` 链接。Codex 后台起常驻 HTTP MCP 时，优先直接调用 `C:\Users\Lenovo\.conda\envs\langchain\python.exe`，不要依赖 `conda run`；详见 `docs/development/RUN_AND_DEBUG.md` 和 `docs/operations/PROBLEM_LOG.md` 的 2026-06-17 记录。
 

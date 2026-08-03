@@ -129,7 +129,7 @@ async def test_visual_llm_rewriter_receives_image_and_cannot_return_parameters(
 
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
-        assert payload["model"] == "qwen3.5-122b-a10b"
+        assert payload["model"] == "qwen3.6-35b-a3b"
         content = payload["messages"][1]["content"]
         assert content[1]["image_url"]["url"] == PNG_DATA_URL
         assert "15秒" in content[0]["text"]

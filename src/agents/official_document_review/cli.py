@@ -22,7 +22,7 @@ def review(
     document_type: str = typer.Option("", "--document-type", help="公文类型，例如通知、请示、报告、函"),
     review_guide: Path | None = typer.Option(None, "--review-guide", help="可选审查规则 Markdown 路径"),
     output: Path | None = typer.Option(None, "--output", "-o", help="可选 Markdown 报告输出路径"),
-    provider: str = typer.Option("deepseek", "--provider", help="模型 provider: deepseek 或 dashscope"),
+    provider: str = typer.Option("deepseek", "--provider", help="模型 provider: deepseek"),
     model: str | None = typer.Option(None, "--model", help="可选模型名覆盖"),
     dry_run: bool = typer.Option(False, "--dry-run", help="只解析、检查并生成 dry-run 报告，不调用模型"),
 ) -> None:
@@ -38,4 +38,3 @@ def review(
     console.print(result["report"])
     if result["output_path"]:
         console.print(f"\n[green]报告已写入:[/green] {result['output_path']}")
-

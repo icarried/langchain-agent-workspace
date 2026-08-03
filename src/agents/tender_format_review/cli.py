@@ -23,7 +23,7 @@ def review(
     review_guide: Optional[Path] = typer.Option(None, help="招标文件审查事项 Markdown"),
     catalog: Optional[Path] = typer.Option(None, help="参考目录 txt"),
     output: Optional[Path] = typer.Option(None, help="输出 Markdown 报告路径"),
-    provider: str = typer.Option("deepseek", help="deepseek 或 dashscope"),
+    provider: str = typer.Option("deepseek", help="deepseek"),
     model: Optional[str] = typer.Option(None, help="覆盖默认模型名称"),
     dry_run: bool = typer.Option(False, help="只解析和分块，不调用模型"),
 ) -> None:

@@ -19,7 +19,7 @@ class SmartResumeScreeningRequest(BaseModel):
     bonus_conditions: list[str] = Field(default_factory=list, description="优先条件")
     reject_conditions: list[str] = Field(default_factory=list, description="淘汰条件")
     output_path: str | None = Field(None, description="可选 Markdown 报告输出路径")
-    provider: str = Field("deepseek", description="模型 provider: deepseek 或 dashscope")
+    provider: str = Field("deepseek", description="模型 provider: deepseek")
     model: str | None = Field(None, description="可选模型名覆盖")
     dry_run: bool = Field(False, description="只解析、打分并生成 dry-run 报告，不调用模型")
 
@@ -70,4 +70,3 @@ def screen(request: SmartResumeScreeningRequest) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-

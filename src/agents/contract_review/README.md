@@ -34,7 +34,7 @@ python -m src.agents.contract_review review `
   --dry-run
 ```
 
-正式调用 DeepSeek 时去掉 `--dry-run`；也可用 `--provider dashscope --model qwen-plus` 调用 Qwen。
+正式调用 DeepSeek 时去掉 `--dry-run`。
 
 ## API
 
@@ -91,7 +91,7 @@ URL 必须能被智能体服务所在环境访问；若使用 MinIO 预签名 UR
 
 ## 环境变量
 
-- `DEEPSEEK_API_KEY` 或 `DASHSCOPE_API_KEY`
+- `DEEPSEEK_API_KEY`
 - 可选 `CONTRACT_REVIEW_MODEL`
 - 可选 `CONTRACT_REVIEW_BASE_URL`
 

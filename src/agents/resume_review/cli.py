@@ -26,7 +26,7 @@ def review(
     job_description_text: str | None = typer.Option(None, "--job-description-text", help="可选岗位 JD 文本"),
     review_guide: Path | None = typer.Option(None, "--review-guide", help="可选审查事项 Markdown 路径"),
     output: Path | None = typer.Option(None, "--output", "-o", help="可选 Markdown 报告输出路径"),
-    provider: str = typer.Option("deepseek", "--provider", help="模型 provider: deepseek 或 dashscope"),
+    provider: str = typer.Option("deepseek", "--provider", help="模型 provider: deepseek"),
     model: str | None = typer.Option(None, "--model", help="可选模型名覆盖"),
     dry_run: bool = typer.Option(False, "--dry-run", help="只解析、分块和生成 dry-run 报告，不调用模型"),
 ) -> None:

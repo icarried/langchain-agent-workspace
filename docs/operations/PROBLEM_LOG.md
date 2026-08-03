@@ -146,7 +146,7 @@
 ### 2026-06-16 - `.env.local` 中模型 API key 为凭证标签而非真实 token
 
 - 状态: Fixed
-- 影响: `tender-format-review` 无法实际调用 DeepSeek 或 DashScope/Qwen，只能完成 docx 解析和 dry-run 分块。
+- 影响: `tender-format-review` 无法实际调用模型 API，只能完成 docx 解析和 dry-run 分块。
 - 现象: 调用 DeepSeek 时 httpx 构造 `Authorization` header 失败，报 `UnicodeEncodeError: 'ascii' codec can't encode characters`。
 - 复现步骤: 运行 `python -m src.agents.tender_format_review review ... --provider deepseek`。
 - 初步判断: `.env.local` 使用两行格式，第一行是 `变量名=凭证名称...`，下一行才是真实 `sk-...` token；加载器只读取了第一行。

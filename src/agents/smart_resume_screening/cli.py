@@ -28,7 +28,7 @@ def screen(
     bonus_condition: list[str] | None = typer.Option(None, "--bonus-condition", help="优先条件，可重复"),
     reject_condition: list[str] | None = typer.Option(None, "--reject-condition", help="淘汰条件，可重复"),
     output: Path | None = typer.Option(None, "--output", "-o", help="可选 Markdown 报告输出路径"),
-    provider: str = typer.Option("deepseek", "--provider", help="模型 provider: deepseek 或 dashscope"),
+    provider: str = typer.Option("deepseek", "--provider", help="模型 provider: deepseek"),
     model: str | None = typer.Option(None, "--model", help="可选模型名覆盖"),
     dry_run: bool = typer.Option(False, "--dry-run", help="只解析、打分并生成 dry-run 报告，不调用模型"),
 ) -> None:
@@ -50,4 +50,3 @@ def screen(
     console.print(result["report"])
     if result["output_path"]:
         console.print(f"\n[green]报告已写入:[/green] {result['output_path']}")
-

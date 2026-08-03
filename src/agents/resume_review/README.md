@@ -53,14 +53,6 @@ python -m src.agents.resume_review review path\to\resume.docx `
   --provider deepseek
 ```
 
-正式调用 DashScope/Qwen：
-
-```powershell
-python -m src.agents.resume_review review path\to\resume.txt `
-  --job-description path\to\jd.txt `
-  --provider dashscope --model qwen-plus
-```
-
 ## API
 
 启动：
@@ -109,6 +101,5 @@ MCP tool 名称为 `review_resume`，参数为：
 ## 环境变量
 
 - `DEEPSEEK_API_KEY`
-- `DASHSCOPE_API_KEY`
 - 可选：`RESUME_REVIEW_MODEL`
 - 可选：`RESUME_REVIEW_BASE_URL`

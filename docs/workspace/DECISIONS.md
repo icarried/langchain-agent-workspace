@@ -2,6 +2,16 @@
 
 用于记录对后续开发有影响的设计决策。
 
+## 2026-08-03 - 视觉改写模型路由由 qwen3.5 切换到 qwen3.6
+
+- 状态: Accepted
+- 决策: `GPU_STACK_VISION_MODEL` 及各智能体的提示词改写模型默认值从
+  `qwen3.5-122b-a10b` 改为 `qwen3.6-35b-a3b`，涉及部门知识库意图识别、
+  图像生成/编辑改写和 ComfyUI 图生视频改写；请求格式与参数保持不变，仅改路由名。
+- 原因: 提供商已下线 `qwen3.5` 系列路由，`qwen3.6` 格式相同、可直接替换。
+- 影响: `.env.example` 与代码默认值同步更新；运行时若在 `.env.local` 显式配置了
+  旧模型名需同步修改。
+
 ## 2026-08-02 - 开发阶段 OpenAI-compatible 与 MCP 复用入口 token
 
 - 状态: Accepted（临时开发策略）
@@ -31,9 +41,9 @@
   `src/document_ocr/GPUStackPaddleOCRVL`。图片型 DOCX复用同一 provider。
 - 配置: 默认使用 `GPU_STACK_API_KEY`、`GPU_STACK_BASE_URL` 和
   `paddleocr-vl-1.6`；批量简历仅保留模型、Base URL、超时和最大 OCR页数覆盖变量。
-- 原因: 工作区已经为部门知识库建立了可复用、脱敏错误的 OCR provider；继续维护百炼
-  `qwen3.5-ocr` 私有实现会造成密钥、提示词和故障处理分叉。
-- 影响: 该决策取代 2026-06-24 的百炼 OCR provider选择，但保留“文本优先、按需 OCR、
+- 原因: 工作区已经为部门知识库建立了可复用、脱敏错误的 OCR provider；继续维护独立的
+  OCR 私有实现会造成密钥、提示词和故障处理分叉。
+- 影响: 该决策取代 2026-06-24 的 OCR provider选择，但保留“文本优先、按需 OCR、
   dry-run仍执行必要解析、每批页数保护”的行为。standalone清单同步携带共享 OCR模块。
 
 ## 2026-08-01 - MCP 使用单入口动态聚合与稳定工具命名空间
@@ -309,9 +319,9 @@
 
 ## 2026-06-24 - 批量简历在 loader 边界按需 OCR
 
-- 决策: `batch-resume-review` 的 CLI、API 和 MCP 统一接受 PDF、DOC、DOCX、MD、TXT；文本优先本地解析，PDF 无文本页面和图片型 DOCX 才调用百炼 `qwen3.5-ocr`。旧 DOC 先禁用宏并转换为 DOCX。
+- 决策: `batch-resume-review` 的 CLI、API 和 MCP 统一接受 PDF、DOC、DOCX、MD、TXT；文本优先本地解析，PDF 无文本页面和图片型 DOCX 才调用 OCR 模型。旧 DOC 先禁用宏并转换为 DOCX。
 - 原因: 在 loader 边界处理格式和 OCR 可复用现有 LangGraph、单候选人失败隔离及远程 URL 内存流逻辑，同时避免文本型简历产生不必要的 OCR 成本。
-- 影响: OCR 复用 `DASHSCOPE_API_KEY`，页面图像会发送给百炼；dry-run 只跳过筛选模型，不跳过解析所必需的 OCR。独立包增加 PyMuPDF，并在 Windows 通过 pywin32 调用 Word，非 Windows 的 DOC 转换可使用 LibreOffice。
+- 影响: OCR 通过外部模型 API 完成；dry-run 只跳过筛选模型，不跳过解析所必需的 OCR。独立包增加 PyMuPDF，并在 Windows 通过 pywin32 调用 Word，非 Windows 的 DOC 转换可使用 LibreOffice。
 
 ## 2026-06-25 - 隔离复制批量简历 OpenAI-compatible 流式适配器
 

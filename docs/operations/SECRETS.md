@@ -4,7 +4,6 @@
 
 | 变量名 | 用途 | 本地来源 |
 | --- | --- | --- |
-| `DASHSCOPE_API_KEY` | 阿里云百炼 / DashScope 模型调用；批量简历共享 OCR不再使用此变量 | `.env.local` |
 | `DEEPSEEK_API_KEY` | DeepSeek API 调用 | `.env.local` |
 | `GPU_STACK_API_KEY` | GPU Stack上的 DeepSeek、Qwen3.5、PaddleOCR-VL、图片与嵌入模型调用；当前默认模型凭证 | `.env.local`，原始来源归档在 `secrets/raw/unorganized-api-keys/` |
 | `GPU_STACK_BASE_URL` | GPU Stack OpenAI-compatible Base URL，不含密钥 | `.env.local` / `.env.example` |
@@ -13,7 +12,7 @@
 | `KB_OPENAI_API_KEY` | `langchain_knowledge_base` 知识库智能体的 OpenAI-compatible chat 和 embedding 调用 | `src/agents/langchain_knowledge_base/.env` |
 | `KB_OPENAI_BASE_URL` | `langchain_knowledge_base` 使用的 OpenAI-compatible base URL | `src/agents/langchain_knowledge_base/.env` |
 | `KB_CHAT_MODEL` | `langchain_knowledge_base` 问答模型 | `src/agents/langchain_knowledge_base/.env` |
-| `KB_EMBEDDING_API_KEY` | `langchain_knowledge_base` 入库向量化使用的 OpenAI-compatible embedding key，可使用百炼 / DashScope key | `src/agents/langchain_knowledge_base/.env` |
+| `KB_EMBEDDING_API_KEY` | `langchain_knowledge_base` 入库向量化使用的 OpenAI-compatible embedding key | `src/agents/langchain_knowledge_base/.env` |
 | `KB_EMBEDDING_BASE_URL` | `langchain_knowledge_base` 入库向量化使用的 OpenAI-compatible embedding base URL | `src/agents/langchain_knowledge_base/.env` |
 | `KB_EMBEDDING_MODEL` | `langchain_knowledge_base` 入库 embedding 模型 | `src/agents/langchain_knowledge_base/.env` |
 

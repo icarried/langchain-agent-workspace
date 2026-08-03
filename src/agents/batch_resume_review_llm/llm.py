@@ -30,14 +30,6 @@ MODEL_CONFIGS = {
         practical_chunk_chars=12000,
         notes="候选人片段并行审查，候选人级决策后再执行确定性筛除和排序。",
     ),
-    "dashscope": ModelConfig(
-        provider="dashscope",
-        model="qwen-plus",
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        api_key_env="DASHSCOPE_API_KEY",
-        practical_chunk_chars=12000,
-        notes="通过 DashScope OpenAI-compatible 接口调用 Qwen。",
-    ),
 }
 
 
