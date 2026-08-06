@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 GPU_STACK_BASE_URL = "http://10.100.5.33:8003/v1"
 GPU_STACK_DEEPSEEK_MODEL = "deepseek-v4-flash"
-GPU_STACK_VISION_MODEL = "qwen3.6-35b-a3b"
+GPU_STACK_VISION_MODEL = "qwen3.6"
 GPU_STACK_EMBEDDING_MODEL = "qwen3-vl-embedding-8b"
 GPU_STACK_IMAGE_MODEL = "z-image-turbo"
 GPU_STACK_IMAGE_EDIT_MODEL = "qwen-image-edit"

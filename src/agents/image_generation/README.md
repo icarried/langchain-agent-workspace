@@ -1,7 +1,7 @@
 # image-generation-agent
 
 面向 AI 应用平台的对话式图片生成与编辑智能体。纯文本请求由
-`qwen3.6-35b-a3b` 改写后交给 `z-image-turbo`；消息中存在图片时改用
+`qwen3.6` 改写后交给 `z-image-turbo`；消息中存在图片时改用
 `qwen-image-edit`。若当前用户没有上传新图，会沿用最近一条助手消息中的图片。
 
 ## 平台接入

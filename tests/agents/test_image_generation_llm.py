@@ -136,7 +136,7 @@ def test_gpu_stack_client_sends_image_to_rewriter_and_routes_edit(monkeypatch) -
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
         captured.append(payload)
-        if payload["model"] == "qwen3.6-35b-a3b":
+        if payload["model"] == "qwen3.6":
             return httpx.Response(
                 200,
                 json={
@@ -183,7 +183,7 @@ def test_gpu_stack_client_sends_image_to_rewriter_and_routes_edit(monkeypatch) -
     )
     assert result.mode == "edit"
     assert result.image_url == DRY_RUN_IMAGE
-    assert captured[0]["model"] == "qwen3.6-35b-a3b"
+    assert captured[0]["model"] == "qwen3.6"
     assert captured[0]["chat_template_kwargs"] == {"enable_thinking": False}
     assert captured[0]["messages"][1]["content"][1]["type"] == "image_url"
     assert captured[1]["model"] == "qwen-image-edit"

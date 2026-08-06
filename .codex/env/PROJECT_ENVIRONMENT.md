@@ -166,6 +166,13 @@ Use dated bullets for discoveries that may need another confirmation.
   `git-934e9af659d7`, image `agent-workspace:git-934e9af659d7`. All 11 Compose services run,
   all nine agent models are healthy, only gateway publishes `10085:8008`, and both knowledge-base
   named volumes remain present. Authenticated model discovery, GPU Stack, department MinIO,
+- 2026-08-03: Remote host `robotpl-hr-deploy` (10.100.5.23) now has direct outbound network
+  access (user-confirmed; verified via `--noproxy` curl: baidu 200, Aliyun PyPI/Debian mirrors
+  200, Tsinghua PyPI 200; `pypi.org`/`deb.debian.org` direct still time out). Server-side image
+  builds can now use reachable Chinese mirrors without the reverse-forward proxy, or keep using
+  the offline wheelhouse at `/opt/agent-workspace/source/.server-wheelhouse`. Production config
+  files under `/opt/agent-workspace/source/.env` and `.env.local` are symlinks to
+  `/opt/agent-workspace/` (verified 2026-08-03).
   platform-to-gateway connectivity and a gateway dry-run all passed.
 - 2026-07-30: Remote host `robotpl` was upgraded to commit
   `804858173ca96e53efebb8f46827b86a5f468e52`, release `git-804858173ca9`, image

@@ -34,7 +34,7 @@ class ImageToVideoSettings(BaseSettings):
         default=20 * 1024 * 1024,
         ge=1024,
     )
-    comfyui_i2v_prompt_rewrite_model: str = "qwen3.6-35b-a3b"
+    comfyui_i2v_prompt_rewrite_model: str = "qwen3.6"
     comfyui_i2v_prompt_rewrite_timeout_seconds: float = Field(default=90, gt=0)
 
     @property
